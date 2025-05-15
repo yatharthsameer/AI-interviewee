@@ -1,0 +1,29 @@
+{
+  "name": "streamingavatar",
+  "version": "1.0.0",
+  "description": "## Pre-Requisites",
+  "type": "module",
+  "main": "server.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "mime-types": "^3.0.1",
+    "node-fetch": "^2.7.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon --watch './**/*.js' server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "prettier": "^3.2.4"
+  }
+}

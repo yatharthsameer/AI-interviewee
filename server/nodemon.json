@@ -1,0 +1,10 @@
+{
+  "verbose": true,
+  "ignore": ["node_modules/*", ".git/*"],
+  "watch": ["*.js", "controllers/*", "services/*", "routes/*", "utils/*", "config/*"],
+  "ext": "js,json,env",
+  "delay": "1000",
+  "env": {
+    "NODE_ENV": "development"
+  }
+} 
