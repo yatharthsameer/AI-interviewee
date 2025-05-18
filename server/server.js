@@ -4,8 +4,10 @@ import { fileURLToPath } from 'url';
 import { logger } from './utils/logger.js';
 import personaRouter from './routes/personaRoutes.js';
 import chatRouter from './routes/chatRouter.js';
+import { initializeSpeechServer } from './controllers/speechController.js';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import { createServer } from 'http';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +20,9 @@ app.use(cors());
 app.use('/persona', personaRouter);
 app.use('/openai', chatRouter);
 
-app.listen(process.env.PORT, () => {
+const server = createServer(app);
+initializeSpeechServer(server);
+
+server.listen(process.env.PORT, () => {
   logger.info('Server', `Server running at http://localhost:${process.env.PORT}`);
 });

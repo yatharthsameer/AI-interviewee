@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
+import SpeechInput from "./components/SpeechInput";
 import "./App.css";
 
 interface PersonaConfig {
@@ -597,6 +598,11 @@ function App() {
     setShowVideo(false);
   };
 
+  const handleSpeechTranscript = async (transcript: string) => {
+    setMessage(transcript);
+    await sendMessage();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -918,6 +924,13 @@ function App() {
             )}
           </div>
         </div>
+
+        {sessionInfo && (
+          <SpeechInput
+            sessionId={sessionInfo.session_id}
+            onTranscript={handleSpeechTranscript}
+          />
+        )}
       </div>
     </div>
   );
