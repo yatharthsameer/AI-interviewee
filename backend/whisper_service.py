@@ -1,63 +1,55 @@
 # backend/whisper_service.py
 
-import threading
-import time
-import logging
-import os
-
 import numpy as np
-from pywhispercpp.model import Model  # pip install pywhispercpp
+from faster_whisper import WhisperModel
+import os
+import logging
 
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("whisper")
+
+SAMPLE_RATE = 16_000
+MODEL_PATH = "base.en"  # will be downloaded automatically
+CACHE_DIR = os.path.expanduser("~/.cache/whisper")  # local cache directory
+
+# Create cache directory if it doesn't exist
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+logger.info("Loading Whisper model (this may take a few minutes on first run)...")
+model = WhisperModel(
+    MODEL_PATH,
+    device="cpu",
+    compute_type="int8",  # <-- safer for CPU-only boxes
+    download_root=CACHE_DIR,  # specify where to download/cache the model
+    local_files_only=False,  # allow downloading if not found locally
+)
+logger.info("Whisper model loaded successfully")
 
 
-class WhisperService:
-    def __init__(self, model_name: str = "base.en", models_dir: str = None):
-        """
-        Wraps whisper.cpp via pywhispercpp.
+def transcribe_int16_pcm(buf: bytes, language="en") -> str:
+    """buf = raw 16-bit mono PCM, ANY length ≥ 1 s; returns text."""
+    logger.debug(f"Starting transcription of {len(buf)} bytes")
 
-        model_name: Either one of the built-in model identifiers
-                    (e.g. "tiny", "base.en", "small", etc.) or
-                    a path to a local .bin file.
-        models_dir:  Directory where models are cached/downloaded.
-        """
-        start = time.time()
-        self.model = Model(model=model_name, models_dir=models_dir)
-        log.info(f"Loaded Whisper model '{model_name}' in {time.time() - start:.2f}s")
+    audio = np.frombuffer(buf, np.int16).astype(np.float32) / 32768.0
 
-        # Make sure all transcribe calls are serialized
-        self.lock = threading.Lock()
+    # auto-gain if peak too low
+    peak = np.abs(audio).max() + 1e-9
+    if peak < 0.05:
+        logger.debug(f"Applying auto-gain (peak: {peak:.3f})")
+        audio *= 0.05 / peak
 
-    def transcribe(self, audio_bytes: bytes) -> str:
-        """
-        Transcribe a single chunk of 16-bit PCM audio.
+    logger.debug("Running Whisper transcription")
+    segs, _ = model.transcribe(
+        audio,
+        language=language,
+        beam_size=1,
+        vad_filter=False,
+        word_timestamps=False,
+    )
 
-        Expects:
-          - mono, 16 kHz, int16 PCM in audio_bytes.
-
-        Returns the concatenated text of all segments.
-        """
-        with self.lock:
-            start = time.time()
-            try:
-                # Convert raw bytes to a NumPy array of int16
-                audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
-                # Run transcription
-                segments = self.model.transcribe(audio_np)
-                # Concatenate segment texts
-                text = "".join(seg.text for seg in segments).strip()
-            except Exception as e:
-                log.error(f"Whisper transcription error: {e}")
-                return ""
-            finally:
-                log.info(f"Whisper chunk processed in {time.time() - start:.2f}s")
-        return text
-
-    def flush(self) -> str:
-        """
-        If you need any final text at end-of-stream, you could
-        implement it here (pywhispercpp does not buffer across calls).
-        For now, no-op.
-        """
-        return ""
+    text = "".join(s.text for s in segs).strip()
+    logger.debug(f"Transcription complete: {text}")
+    return text

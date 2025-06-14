@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import os, requests, typing as _t
 import logging
+from dotenv import load_dotenv
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -10,7 +12,8 @@ logging.basicConfig(
 logger = logging.getLogger('heygen')
 
 Json = _t.Dict[str, _t.Any]
-
+#  load env
+load_dotenv()
 
 class HeyGenSDK:
     """Wrapper around /v1/streaming.* endpoints."""
@@ -86,17 +89,29 @@ class HeyGenSDK:
     # ────────────────────────── TTS tasks ────────────────────────────
     def send_text(self, session_id: str, text: str) -> Json:
         logger.info(f"Sending text to session {session_id}: {text[:50]}...")
-        logger.info("Complete transcript being sent to HeyGen:\n%s", text)  # Log the complete transcript
-        r = requests.post(
-            f"{self.base}/v1/streaming.task",
-            headers=self.h,
-            json={"session_id": session_id, "text": text},
-            timeout=50,
-        )
-        r.raise_for_status()
-        data = r.json()["data"]
-        logger.info(f"Text sent successfully. Task ID: {data.get('task_id')}")
-        return data
+        payload = {
+            "session_id": session_id,
+            "text": text,
+            "task_type": "chat",  # interactive chat mode
+            "task_mode": "sync",  # explicitly synchronous TTS
+        }
+        for attempt in (1, 2):
+            r = requests.post(
+                f"{self.base}/v1/streaming.task",
+                headers=self.h,
+                json=payload,
+                timeout=15,
+            )
+            if r.status_code != 500:
+                break
+            logger.warning(f"HeyGen 500 on attempt {attempt}, retrying…")
+            time.sleep(0.8)
+
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError:
+            logger.error(f"HeyGen send_text final error {r.status_code}: {r.text}")
+            return {}
 
     # ───────────────────────────── misc ──────────────────────────────
     def stop_session(self, session_id: str) -> None:

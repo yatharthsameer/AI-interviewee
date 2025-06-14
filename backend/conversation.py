@@ -6,9 +6,16 @@ import threading
 import re
 import random
 import html
+import logging
 from heygensdk import HeyGenSDK
 from gemsdk import GeminiSDK
 from persona import persona
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("conversation")
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")  # sentence boundary
 # strip fenced code blocks  ``` … ```
@@ -31,6 +38,7 @@ class Conversation:
         self.hist: list[dict] = []  # {"role": "user" | "assistant", "content": ...}
         # build *once*; cheaper than re-building every turn
         self._persona_prompt = self._make_persona_prompt()
+        logger.info(f"Initialized conversation for session {session_id}")
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -97,11 +105,15 @@ class Conversation:
         """
         Called by server /api/send_text.  Returns the final "spoken" string.
         """
+        logger.info(f"Received user text: {user_text}")
+
         # Handle empty text case
         if not user_text.strip():
+            logger.info("Empty text received, sending default response")
             return "Hey, I didn't quite get what you said. Can you repeat that for me again?"
 
         if use_ai:
+            logger.info("Generating AI response using Gemini")
             self.hist.append({"role": "user", "content": user_text})
             # single (full) reply returned in one chunk
             reply = next(
@@ -111,17 +123,20 @@ class Conversation:
                     max_context=20,
                 )
             )
+            logger.info(f"Gemini response: {reply}")
             reply = self._add_hesitation(reply)
             self.hist.append({"role": "assistant", "content": reply})
         else:
+            logger.info("Using user text directly (no AI generation)")
             reply = user_text
 
         reply = self._clean_for_tts(reply)
+        logger.info(f"Cleaned text for TTS: {reply}")
 
-        # split ≤220-char chunks on sentence boundary
+        # split ≤180-char chunks on sentence boundary
         chunks, buf = [], ""
         for sent in _SENT_SPLIT.split(reply):
-            if len(buf) + len(sent) + 1 > 220:
+            if len(buf) + len(sent) + 1 > 150:
                 if buf:
                     chunks.append(buf.strip())
                 buf = sent
@@ -130,10 +145,11 @@ class Conversation:
         if buf:
             chunks.append(buf.strip())
 
-        for ch in chunks:
+        logger.info(f"Split into {len(chunks)} chunks for HeyGen")
+        for i, ch in enumerate(chunks, 1):
+            logger.info(f"Sending chunk {i}/{len(chunks)} to HeyGen: {ch}")
             self._idle()
             self.hg.send_text(self.sid, ch)
-            time.sleep(0.2)
-            self._idle()
+            self._idle()  # wait again – ensures serial queue
 
         return reply
