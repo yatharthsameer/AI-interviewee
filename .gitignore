@@ -28,4 +28,7 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
-*.swo 
+*.swo
+
+# Large model files
+backend/models/ggml-base.en.bin 
