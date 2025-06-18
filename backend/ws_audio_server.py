@@ -13,7 +13,7 @@ CHUNK_MS = 20
 FRAME_BYTES = SAMPLE_RATE * CHUNK_MS // 1000 * 2  # 640
 VAD = webrtcvad.Vad(2)
 PAD_SEC = 1.0
-END_SIL_MS = 800  # reduced from 1200ms for faster Q&A turn-taking
+END_SIL_MS = 1500  # reduced from 1200ms for faster Q&A turn-taking
 
 
 class Stream:

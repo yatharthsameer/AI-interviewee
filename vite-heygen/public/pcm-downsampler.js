@@ -1,3 +1,4 @@
+// pcm-downsampler.js
 /* 48-kHz Float32 → 16-kHz Int16 mono, 20-ms frames */
 
 class DownsamplerProcessor extends AudioWorkletProcessor {

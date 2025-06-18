@@ -1,18 +1,16 @@
-// src/hooks/useTabAudio.js
 import { useEffect, useRef } from "react";
 
 /**
- *   const audio = useTabAudio("ws://localhost:8765");
+ *   const audio = useTabAudio(onFinal);
  *   await audio.start();
  *   ...
  *   audio.stop();
  */
-export function useTabAudio(wsUrl) {
+export function useTabAudio(onFinal) {
     const wsRef = useRef(null);
     const ctxRef = useRef(null);
     const streamRef = useRef(null);
     const timerRef = useRef(null);
-    const BACKEND = "http://localhost:5001";
 
     const cleanup = () => {
         clearInterval(timerRef.current);
@@ -25,7 +23,7 @@ export function useTabAudio(wsUrl) {
     /* unmount cleanup */
     useEffect(() => cleanup, []);
 
-    const start = async () => {
+    const start = async (wsUrl) => {
         if (wsRef.current) return; // already running
 
         /* 1. capture (tab audio preferred) */
@@ -35,8 +33,10 @@ export function useTabAudio(wsUrl) {
                 video: true,
                 audio: { echoCancellation: false },
             });
+            console.log("[useTabAudio] Got tab audio stream");
         } catch {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log("[useTabAudio] Got mic audio stream");
         }
         stream.getVideoTracks().forEach((t) => t.stop());
         streamRef.current = stream;
@@ -72,29 +72,34 @@ export function useTabAudio(wsUrl) {
         ws.binaryType = "arraybuffer";
         wsRef.current = ws;
 
-        let lastSentAt = 0;
-
-        worklet.port.onmessage = ({ data }) => {
-            ws.readyState === 1 && ws.send(data);
+        ws.onopen = () => {
+            console.log(`[useTabAudio] WebSocket connected to ${wsUrl}`);
+        };
+        ws.onerror = (e) => {
+            console.error("[useTabAudio] WebSocket error", e);
+        };
+        ws.onclose = (e) => {
+            console.log("[useTabAudio] WebSocket closed", e);
         };
 
-        // Send transcripts to backend for AI response generation
-        ws.onmessage = async (e) => {
-            const { text, final } = JSON.parse(e.data);
-            if (!final || !text) return;
+        worklet.port.onmessage = ({ data }) => {
+            if (ws.readyState === 1) {
+                ws.send(data);
+                // Log every 20th chunk to avoid spam
+                if (!worklet._sendCount) worklet._sendCount = 0;
+                worklet._sendCount++;
+                if (worklet._sendCount % 20 === 0) {
+                    console.log("[useTabAudio] Sent audio chunk to backend");
+                }
+            }
+        };
 
-            try {
-                await fetch(`${BACKEND}/api/send_text`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        session_id: window.__HEYGEN_SID,
-                        text,
-                        generate_ai: true,
-                    }),
-                });
-            } catch (err) {
-                console.error("send_text error", err);
+        // When Whisper sends a final result, just call the callback
+        ws.onmessage = (e) => {
+            const { text, final } = JSON.parse(e.data || "{}");
+            if (final && text) {
+                console.log("[useTabAudio] Received transcript from backend:", text);
+                onFinal(text);
             }
         };
     };
@@ -102,4 +107,4 @@ export function useTabAudio(wsUrl) {
     const stop = () => cleanup();
 
     return { start, stop, connected: () => !!wsRef.current };
-}
+} 

@@ -1,46 +1,36 @@
-# backend/conversation.py
+# conversation.py ── Gemini persona wrapper (no TTS here)
 
-# -*- coding: utf-8 -*-
-import time
-import threading
-import re
-import random
-import html
-import logging
-from heygensdk import HeyGenSDK
+from __future__ import annotations
+import re, random, html, logging, threading, time
 from gemsdk import GeminiSDK
 from persona import persona
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("conversation")
+log = logging.getLogger("conversation")
 
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")  # sentence boundary
-# strip fenced code blocks  ``` … ```
+# sentence boundary
+_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _CODE_BLOCK = re.compile(r"```.*?```", re.S)
-# strip inline back‐ticked fragments  `like this`
 _INLINE_CODE = re.compile(r"`[^`]+`")
-# collapse runs of punctuation like "!!" to "!"
 _EXTRA_PUNCT = re.compile(r"[!?,]{2,}")
 
 
 class Conversation:
-    """
-    Tracks chat history & streams Gemini output to HeyGen sequentially.
-    """
+    """Keeps chat history & generates Gemini replies."""
 
-    def __init__(self, session_id: str, hg: HeyGenSDK):
-        self.sid = session_id
-        self.hg = hg
+    def __init__(self) -> None:
         self.llm = GeminiSDK()
-        self.hist: list[dict] = []  # {"role": "user" | "assistant", "content": ...}
-        # build *once*; cheaper than re-building every turn
-        self._persona_prompt = self._make_persona_prompt()
-        logger.info(f"Initialized conversation for session {session_id}")
+        self.hist: list[dict] = []  # {"role","content"}
+        self.persona_prompt = self._make_persona_prompt()
 
-    # ------------------------------------------------------------------
+        # Speech accumulation state
+        self._avatar_speaking = False
+        self._speech_buffer = []
+        self._buffer_lock = threading.Lock()
+        self._processing_timer = None
+
+        log.info("Conversation initialised")
+
+    # ────────────────────────────────────────────────────────────────
     @staticmethod
     def _make_persona_prompt() -> str:
         """Assemble a rich, single-shot system/persona prompt."""
@@ -49,107 +39,162 @@ class Conversation:
             f"at {persona.education.institution} with a GPA of {persona.education.gpa}. "
             f"You're studying {persona.education.degree}. "
             "You have extensive experience in full-stack development, distributed systems, and MLOps, "
-            "with notable achievements including AIR 423 in JEE Advanced and being an Expert on Codeforces. "
+            "with notable achievements including AIR 423 in JEE Advanced among 2M+ candidates and being a Candidate Master on Codeforces (max rating 1950). "
+            "You've worked at companies like Sprinklr, Mercor, Merlin AI, and Narrato AI, building scalable systems and AI platforms. "
+            "Your key projects include JusticeSearch (distributed legal search engine), NeuralCoder (GPT-4 fine-tuned CP assistant), "
+            "and multi-tenant AI hiring platforms. You're proficient in Go, C++, Python, Java, TypeScript, and various cloud technologies. "
             "Speak casually, 1-3 sentences, occasionally hesitating with "
             '"um…", "let me think…". Use STAR for behavioral answers. '
             "When discussing technical topics, draw from your experience with "
-            "Python, Go, Java, TypeScript, and various frameworks like Spring Boot, Next.js, and PyTorch. "
-            "Never output markdown or code fences."
+            "distributed systems, cloud platforms (GCP, AWS), machine learning, and full-stack development. "
+            "Never output markdown or code fences. "
+            "This is supposed to be an interview, so be concise and to the point, keeping your response natural, conversational."
+            "You are a software engineer with 5 years of experience in the industry."
+            "Keep every answer under 300 characters."
         )
 
-    # ------------------------------------------------------------------
-    def _idle(self, poll=1.0):
-        """
-        Block until HeyGen's avatar is not streaming any audio/video.
-        """
-        while True:
-            try:
-                st = self.hg.get_status(self.sid)
-            except Exception:
-                break  # treat any HTTP error as "idle"
-            flag = (
-                st.get("connectionStatus")
-                or st.get("connection_status")
-                or st.get("status")
-            )
-            if flag != "streaming":
-                break
-            time.sleep(poll)
-
-    # ------------------------------------------------------------------
-    def _add_hesitation(self, text: str) -> str:
-        """
-        Prepend a short hesitation ~30% of the time.
-        """
+    # ────────────────────────────────────────────────────────────────
+    def _add_hesitation(self, txt: str) -> str:
         if random.random() < 0.3:
-            prefix = random.choice(["um… ", "let me think… ", "right… "])
-            return prefix + text[0].lower() + text[1:]
-        return text
+            pref = random.choice(
+                ["um… ", "let me think… ", "right… ", "hmm… ", "well… "]
+            )
+            return pref + txt[0].lower() + txt[1:]
+        return txt
 
-    # ------------------------------------------------------------------
-    def _clean_for_tts(self, txt: str) -> str:
-        """
-        Remove markdown, code fences, extra punctuation, collapse whitespace,
-        and unescape HTML entities—so HeyGen's TTS speaks cleanly.
-        """
+    def _clean(self, txt: str) -> str:
         txt = _CODE_BLOCK.sub(" ", txt)
         txt = _INLINE_CODE.sub(" ", txt)
         txt = html.unescape(txt)
-        txt = _EXTRA_PUNCT.sub(lambda m: m.group(0)[0], txt)  # "!!" → "!"
+        txt = _EXTRA_PUNCT.sub(lambda m: m.group(0)[0], txt)
         txt = txt.replace("\n", " ")
-        txt = re.sub(r"\s{2,}", " ", txt).strip()
-        return txt
+        return re.sub(r"\s{2,}", " ", txt).strip()
 
-    # ------------------------------------------------------------------
-    def send(self, user_text: str, *, use_ai: bool = False) -> str:
-        """
-        Called by server /api/send_text.  Returns the final "spoken" string.
-        """
-        logger.info(f"Received user text: {user_text}")
+    # ────────────────────────────────────────────────────────────────
+    def set_avatar_speaking(self, speaking: bool) -> None:
+        """Update avatar speaking state and handle speech buffer."""
+        with self._buffer_lock:
+            was_speaking = self._avatar_speaking
+            self._avatar_speaking = speaking
 
-        # Handle empty text case
-        if not user_text.strip():
-            logger.info("Empty text received, sending default response")
-            return "Hey, I didn't quite get what you said. Can you repeat that for me again?"
+            if was_speaking and not speaking:
+                # Avatar just finished speaking, schedule buffer processing
+                self._schedule_buffer_processing()
+            elif not was_speaking and speaking:
+                # Avatar just started speaking, cancel any pending processing
+                if self._processing_timer:
+                    self._processing_timer.cancel()
+                    self._processing_timer = None
+
+        log.info(f"Avatar speaking state: {speaking}")
+
+    def _schedule_buffer_processing(self) -> None:
+        """Schedule processing of accumulated speech after a delay."""
+        if self._processing_timer:
+            self._processing_timer.cancel()
+
+        self._processing_timer = threading.Timer(1.5, self._process_speech_buffer)
+        self._processing_timer.start()
+        log.info("Scheduled speech buffer processing in 1.5 seconds")
+
+    def _process_speech_buffer(self) -> None:
+        """Process accumulated speech buffer."""
+        with self._buffer_lock:
+            if not self._speech_buffer:
+                log.info("Speech buffer empty, nothing to process")
+                return
+
+            # Combine all accumulated speech
+            combined_text = " ".join(self._speech_buffer)
+            self._speech_buffer.clear()
+            log.info(f"Processing accumulated speech: {combined_text[:100]}...")
+
+        # Generate response to accumulated speech (bypass speaking state check)
+        if not combined_text:
+            return
+
+        # Add to history and generate response
+        self.hist.append({"role": "user", "content": combined_text})
+        raw = next(
+            self.llm.stream(
+                self.hist,
+                persona_prompt=self.persona_prompt,
+                max_context=20,
+            )
+        )
+        raw = self._add_hesitation(raw)
+        response = self._clean(raw)
+        self.hist.append({"role": "assistant", "content": response})
+
+        # Limit response length
+        if len(response) > 390:
+            response = response[:390] + "..."
+
+        log.info(f"Generated response to accumulated speech: {response[:100]}...")
+
+        # Store the response for retrieval
+        self._last_accumulated_response = response
+
+    def get_accumulated_response(self) -> str | None:
+        """Get the response to accumulated speech if available."""
+        response = getattr(self, "_last_accumulated_response", None)
+        if response:
+            delattr(self, "_last_accumulated_response")
+        return response
+
+    # ────────────────────────────────────────────────────────────────
+    def reply(self, user_text: str, *, use_ai: bool = True) -> str:
+        if not user_text:
+            return "Hey, I didn't quite catch that – could you repeat?"
+
+        with self._buffer_lock:
+            if self._avatar_speaking:
+                # Avatar is speaking, buffer this speech
+                self._speech_buffer.append(user_text)
+                log.info(f"Buffered speech while avatar speaking: {user_text[:50]}...")
+                return ""  # Return empty to indicate buffering
+            else:
+                # Avatar not speaking, process immediately
+                log.info(f"Processing speech immediately: {user_text[:50]}...")
 
         if use_ai:
-            logger.info("Generating AI response using Gemini")
             self.hist.append({"role": "user", "content": user_text})
-            # single (full) reply returned in one chunk
-            reply = next(
+            raw = next(
                 self.llm.stream(
                     self.hist,
-                    persona_prompt=self._persona_prompt,
+                    persona_prompt=self.persona_prompt,
                     max_context=20,
                 )
             )
-            logger.info(f"Gemini response: {reply}")
-            reply = self._add_hesitation(reply)
+            raw = self._add_hesitation(raw)
+            reply = self._clean(raw)
             self.hist.append({"role": "assistant", "content": reply})
         else:
-            logger.info("Using user text directly (no AI generation)")
-            reply = user_text
+            reply = self._clean(user_text)
 
-        reply = self._clean_for_tts(reply)
-        logger.info(f"Cleaned text for TTS: {reply}")
-
-        # split ≤180-char chunks on sentence boundary
-        chunks, buf = [], ""
-        for sent in _SENT_SPLIT.split(reply):
-            if len(buf) + len(sent) + 1 > 150:
-                if buf:
-                    chunks.append(buf.strip())
-                buf = sent
-            else:
-                buf += (" " if buf else "") + sent
-        if buf:
-            chunks.append(buf.strip())
-
-        logger.info(f"Split into {len(chunks)} chunks for HeyGen")
-        for i, ch in enumerate(chunks, 1):
-            logger.info(f"Sending chunk {i}/{len(chunks)} to HeyGen: {ch}")
-            self._idle()
-            self.hg.send_text(self.sid, ch)
-            self._idle()  # wait again – ensures serial queue
+        # Limit response length to prevent unnecessarily long responses
+        if len(reply) > 390:
+            reply = reply[:390] + "..."
 
         return reply
+
+    def interrupt(self):
+        """Handle an interruption: stop avatar, clear buffer, and start 5s accumulation window."""
+        with self._buffer_lock:
+            # Clear any pending buffer and cancel timers
+            self._speech_buffer.clear()
+            if self._processing_timer:
+                self._processing_timer.cancel()
+                self._processing_timer = None
+            self._avatar_speaking = True  # treat as speaking during accumulation
+        log.info("Interruption detected: starting 5s accumulation window.")
+        # After 5 seconds, treat as done speaking and process buffer
+        self._processing_timer = threading.Timer(
+            5.0, self._end_interruption_accumulation
+        )
+        self._processing_timer.start()
+
+    def _end_interruption_accumulation(self):
+        with self._buffer_lock:
+            self._avatar_speaking = False
+        self._schedule_buffer_processing()
