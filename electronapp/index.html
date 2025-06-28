@@ -31,18 +31,6 @@
     }
 
     /* Notes page */
-    #note {
-      flex: 1;
-      width: 100%;
-      border: none;
-      outline: none;
-      background: transparent;
-      color: #eee;
-      font: 15px/1.4 monospace;
-      padding: 12px;
-      resize: none;
-    }
-
     #solution {
       flex: 1;
       width: 100%;
@@ -53,7 +41,7 @@
       font: 13px/1.3 monospace;
       padding: 12px;
       resize: none;
-      display: none;
+      display: block;
       white-space: pre-wrap;
       border-top: 1px solid #555;
     }
@@ -64,7 +52,7 @@
       display: flex;
       flex-direction: column;
       padding: 12px;
-      overflow: hidden;
+      min-height: 0;
     }
 
     #chatMessages {
@@ -78,9 +66,47 @@
 
     #chatInputContainer {
       display: flex;
+      flex-direction: column;
       gap: 8px;
       padding: 8px 0;
       border-top: 1px solid #555;
+    }
+
+    /* Image preview in chat */
+    #imagePreviewContainer {
+      position: relative;
+      align-self: flex-start;
+      max-width: 200px;
+    }
+    
+    #imagePreview {
+      width: 100%;
+      max-width: 200px;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid #666;
+    }
+    
+    #removeImageBtn {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 20px;
+      height: 20px;
+      background: rgba(180, 70, 70, .9);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font: 12px monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #inputRow {
+      display: flex;
+      gap: 8px;
     }
 
     #chatInput {
@@ -205,26 +231,78 @@
     .loading {
       color: #fa0 !important;
     }
+    
+    /* Screenshot Preview Area */
+    #screenshotPreviewArea { 
+      display:none; 
+      padding:8px; 
+      background:rgba(50,50,50,.9); 
+      border-top:1px solid #555; 
+      flex-shrink:0; 
+      max-height:120px; 
+      overflow-y:auto; 
+    }
+    #screenshotPreviewContainer { 
+      display:flex; 
+      gap:8px; 
+      flex-wrap:wrap; 
+      align-items:center; 
+    }
+    .screenshot-preview { 
+      position:relative; 
+      display:inline-block; 
+    }
+    .screenshot-preview img { 
+      width:80px; 
+      height:60px; 
+      object-fit:cover; 
+      border-radius:4px; 
+      border:1px solid #666; 
+    }
+    .screenshot-remove { 
+      position:absolute; 
+      top:-4px; 
+      right:-4px; 
+      width:16px; 
+      height:16px; 
+      background:rgba(180,70,70,.9); 
+      color:#fff; 
+      border:none; 
+      border-radius:50%; 
+      cursor:pointer; 
+      font:10px monospace; 
+      display:flex; 
+      align-items:center; 
+      justify-content:center; 
+    }
+    #screenshotCount { 
+      color:#888; 
+      font:12px monospace; 
+      margin-left:8px; 
+    }
+    #processHint { 
+      color:#888; 
+      font:11px monospace; 
+      margin-left:auto; 
+    }
   </style>
 </head>
 
 <body>
   <div id="container">
-    <div id="status">Stealth Notes</div>
+    <div id="status">Interview Helper</div>
 
     <!-- Notes Page -->
     <div id="notesPage" class="page active">
-      <!-- Original notes section -->
-      <textarea id="note" readonly>
-🕶  Interview crib-sheet
------------------------
-
-
-📸 Press Cmd+Shift+1 to analyze screenshot
-      </textarea>
-
       <!-- Solution display area -->
       <textarea id="solution" readonly placeholder="Screenshot solution will appear here..."></textarea>
+      <!-- Screenshot Preview Area -->
+      <div id="screenshotPreviewArea">
+        <div id="screenshotPreviewContainer">
+          <span id="screenshotCount">0 screenshots</span>
+          <span id="processHint">Press Cmd+Enter to process</span>
+        </div>
+      </div>
     </div>
 
     <!-- Chat Page -->
@@ -232,21 +310,115 @@
       <div id="chatContainer">
         <div id="chatMessages"></div>
         <div id="chatInputContainer">
-          <input type="text" id="chatInput" placeholder="Ask a question..." />
-          <button id="sendBtn">Send</button>
-        </div>
-      </div>
+          <!-- Image preview area above input -->
+          <div id="imagePreviewContainer" style="display: none;">
+            <img id="imagePreview" />
+            <button id="removeImageBtn">×</button>
+          </div>
+          <div id="inputRow">
+            <input type="text" id="chatInput" placeholder="Ask a question..." />
+            <button id="sendBtn">Send</button>
+            </div>
+            </div>
+            </div>
     </div>
 
     <!-- Button container -->
     <div id="buttonContainer">
-      <button class="btn clear" id="clearBtn">Clear Solution</button>
+      <button class="btn clear" id="clearBtn">Interview Helper</button>
       <button class="btn" id="chatBtn">Chat</button>
-      <button class="btn" id="dummyBtn2">Button 3</button>
+      <button class="btn" id="dummyBtn2">Clear Page</button>
     </div>
   </div>
 
   <script>
+                                                                            // Screenshot accumulation for LeetCode Helper
+                                                                            let accumulatedScreenshots = [];
+
+                                                                            function addScreenshotToPreview(imageData) {
+                                                                              console.log('addScreenshotToPreview called with data length:', imageData.length);
+                                                                              accumulatedScreenshots.push(imageData);
+                                                                              console.log('Screenshots array now has:', accumulatedScreenshots.length, 'items');
+                                                                              updateScreenshotPreview();
+                                                                              showScreenshotPreviewArea();
+                                                                              console.log(`Added screenshot, total: ${accumulatedScreenshots.length}`);
+                                                                            }
+
+                                                                            function removeScreenshotFromPreview(index) {
+                                                                              accumulatedScreenshots.splice(index, 1);
+                                                                              updateScreenshotPreview();
+                                                                              if (accumulatedScreenshots.length === 0) {
+                                                                                hideScreenshotPreviewArea();
+                                                                              }
+                                                                              console.log(`Removed screenshot, total: ${accumulatedScreenshots.length}`);
+                                                                            }
+
+                                                                            function updateScreenshotPreview() {
+                                                                              const container = document.getElementById('screenshotPreviewContainer');
+                                                                              const countEl = document.getElementById('screenshotCount');
+
+                                                                              // Clear existing previews except count and hint
+                                                                              const previews = container.querySelectorAll('.screenshot-preview');
+                                                                              previews.forEach(preview => preview.remove());
+
+                                                                              // Add new previews
+                                                                              accumulatedScreenshots.forEach((imageData, index) => {
+                                                                                const previewDiv = document.createElement('div');
+                                                                                previewDiv.className = 'screenshot-preview';
+
+                                                                                const img = document.createElement('img');
+                                                                                img.src = `data:image/png;base64,${imageData}`;
+
+                                                                                const removeBtn = document.createElement('button');
+                                                                                removeBtn.className = 'screenshot-remove';
+                                                                                removeBtn.textContent = '×';
+                                                                                removeBtn.addEventListener('click', () => removeScreenshotFromPreview(index));
+
+                                                                                previewDiv.appendChild(img);
+                                                                                previewDiv.appendChild(removeBtn);
+
+                                                                                // Insert before the count element
+                                                                                container.insertBefore(previewDiv, countEl);
+                                                                              });
+
+                                                                              // Update count
+                                                                              countEl.textContent = `${accumulatedScreenshots.length} screenshot${accumulatedScreenshots.length !== 1 ? 's' : ''}`;
+                                                                            }
+
+                                                                            function showScreenshotPreviewArea() {
+                                                                              document.getElementById('screenshotPreviewArea').style.display = 'block';
+                                                                            }
+
+                                                                            function hideScreenshotPreviewArea() {
+                                                                              document.getElementById('screenshotPreviewArea').style.display = 'none';
+                                                                            }
+
+                                                                            function clearAccumulatedScreenshots() {
+                                                                              accumulatedScreenshots = [];
+                                                                              hideScreenshotPreviewArea();
+                                                                              console.log('Cleared all accumulated screenshots');
+                                                                            }
+
+                                                                            async function processAccumulatedScreenshots() {
+                                                                              if (accumulatedScreenshots.length === 0) {
+                                                                                console.log('No screenshots to process');
+                                                                                return;
+                                                                              }
+
+                                                                              console.log(`Processing ${accumulatedScreenshots.length} accumulated screenshots`);
+                                                                              hideScreenshotPreviewArea();
+
+                                                                              try {
+                                                                                if (window.electronAPI) {
+                                                                                  await window.electronAPI.processAccumulatedScreenshots([...accumulatedScreenshots]);
+                                                                                  clearAccumulatedScreenshots();
+                                                                                }
+                                                                              } catch (error) {
+                                                                                console.error('Error processing screenshots:', error);
+                                                                                showScreenshotPreviewArea(); // Show preview area again on error
+                                                                              }
+                                                                            }
+
     // Page management
     const notesPage = document.getElementById('notesPage');
     const chatPage = document.getElementById('chatPage');
@@ -269,7 +441,7 @@
         chatBtn.classList.remove('active');
         clearBtn.classList.remove('active');
         currentPage = 'notes';
-        document.getElementById('status').textContent = 'Stealth Notes';
+        document.getElementById('status').textContent = 'Interview Helper';
       }
     }
 
@@ -277,41 +449,92 @@
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
+                          const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+                          const imagePreview = document.getElementById('imagePreview');
+                          const removeImageBtn = document.getElementById('removeImageBtn');
 
-    function addMessage(text, type = 'user') {
+                          let currentImageData = null;
+
+                          function addMessage(text, type = 'user', imageData = null) {
       const messageEl = document.createElement('div');
       messageEl.className = `message ${type}`;
-      messageEl.textContent = text;
+
+                          if (imageData && type === 'user') {
+                            // Add image to user message
+                            const img = document.createElement('img');
+                            img.src = `data:image/png;base64,${imageData}`;
+                            img.style.maxWidth = '200px';
+                            img.style.borderRadius = '8px';
+                            img.style.marginBottom = '8px';
+                            img.style.display = 'block';
+                            messageEl.appendChild(img);
+                          }
+
+                          if (text) {
+                            const textNode = document.createTextNode(text);
+                            messageEl.appendChild(textNode);
+                          }
+
       chatMessages.appendChild(messageEl);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
+                          function showImagePreview(imageData) {
+                            currentImageData = imageData;
+                            imagePreview.src = `data:image/png;base64,${imageData}`;
+                            imagePreviewContainer.style.display = 'block';
+                            chatInput.placeholder = 'Ask about this image...';
+                          }
+
+                          function hideImagePreview() {
+                            currentImageData = null;
+                            imagePreview.src = '';
+                            imagePreviewContainer.style.display = 'none';
+                            chatInput.placeholder = 'Ask a question...';
+                          }
+
     function sendMessage() {
       const text = chatInput.value.trim();
-      if (!text) return;
+      if (!text && !currentImageData) return;
 
-      // Add user message
-      addMessage(text, 'user');
+      // Add user message with image if present
+      addMessage(text, 'user', currentImageData);
+
+      // Prepare data for sending
+      const messageText = text || null;
+      const imageData = currentImageData;
+
+      // Clear input and image
       chatInput.value = '';
+      hideImagePreview();
+      
       sendBtn.disabled = true;
       sendBtn.textContent = 'Sending...';
 
       // Send to backend
       if (window.electronAPI) {
-        window.electronAPI.sendChatMessage(text);
+        window.electronAPI.sendChatMessage(messageText, imageData);
       }
     }
 
     // Button event listeners
     chatBtn.addEventListener('click', () => showPage('chat'));
     clearBtn.addEventListener('click', () => {
-      if (currentPage === 'notes') {
-        document.getElementById('solution').style.display = 'none';
-        document.getElementById('note').style.display = 'block';
-        document.getElementById('status').textContent = 'Stealth Notes';
-        document.getElementById('status').className = '';
-      } else {
-        showPage('notes');
+      // Always go to Interview Helper page
+      showPage('notes');
+    });
+
+      // Dynamic clear button (Button 3) - clears based on current page
+      document.getElementById('dummyBtn2').addEventListener('click', () => {
+        if (currentPage === 'chat') {
+          // Clear chat messages
+          chatMessages.innerHTML = '';
+          console.log('Chat history cleared');
+        } else {
+          // Clear solution and accumulated screenshots
+          document.getElementById('solution').value = '';
+          clearAccumulatedScreenshots();
+          console.log('Interview Helper page cleared');
       }
     });
 
@@ -321,15 +544,22 @@
       if (e.key === 'Enter') sendMessage();
     });
 
+                        removeImageBtn.addEventListener('click', hideImagePreview);
+
+                        // Handle screenshot for chat mode
+                        function onChatScreenshotCaptured(imageData) {
+                          console.log('Chat screenshot captured, showing preview');
+                          showImagePreview(imageData);
+                        }
+
     // Handle electron API
     if (window.electronAPI) {
       const statusEl = document.getElementById('status');
       const solutionEl = document.getElementById('solution');
-      const noteEl = document.getElementById('note');
 
       // Chat response handlers
       window.electronAPI.onChatResponse((response) => {
-        addMessage(response, 'ai');
+        addMessage(response, 'assistant');
         sendBtn.disabled = false;
         sendBtn.textContent = 'Send';
       });
@@ -342,19 +572,24 @@
 
       // Screenshot handlers (existing functionality)
       window.electronAPI.onScreenshotSolution((solution) => {
-        if (currentPage !== 'notes') showPage('notes');
         console.log('Received solution:', solution);
-        statusEl.textContent = 'Solution Ready';
-        statusEl.className = '';
+        console.log('Solution length:', solution.length);
+        
+        // Set the solution in the textarea (now visible by default)
+        const solutionElement = document.getElementById('solution');
+        if (solutionElement) {
+          solutionElement.value = solution;
+          console.log('Solution set in textarea');
+        } else {
+          console.error('Could not find solution textarea element!');
+        }
 
-        solutionEl.style.display = 'block';
-        solutionEl.value = solution;
-        noteEl.style.display = 'none';
-
+        // Auto-clear after 60 seconds
         setTimeout(() => {
-          solutionEl.style.display = 'none';
-          noteEl.style.display = 'block';
-          statusEl.textContent = 'Stealth Notes';
+          if (solutionElement) {
+            solutionElement.value = '';
+            console.log('Auto-cleared solution after 60 seconds');
+          }
         }, 60000);
       });
 
@@ -364,10 +599,34 @@
         statusEl.className = 'error';
 
         setTimeout(() => {
-          statusEl.textContent = currentPage === 'chat' ? 'Chat Mode' : 'Stealth Notes';
+          statusEl.textContent = currentPage === 'chat' ? 'Chat Mode' : 'Interview Helper';
           statusEl.className = '';
         }, 5000);
       });
+
+      // LeetCode Helper screenshot accumulation
+      window.electronAPI.onLeetcodeScreenshotCaptured((imageData) => {
+        console.log('Received screenshot for LeetCode Helper, currentPage:', currentPage);
+        console.log('Image data length:', imageData.length);
+        if (currentPage === 'notes') {
+          console.log('Adding screenshot to preview...');
+          addScreenshotToPreview(imageData);
+        } else {
+          console.log('Not in notes page, ignoring screenshot');
+        }
+      });
+
+      // Mode detection for screenshot shortcut
+      function onCheckCurrentMode() {
+        console.log('Current mode check, current page:', currentPage);
+        if (currentPage === 'chat') {
+          // In chat mode - take screenshot and add to chat input
+          window.electronAPI.takeScreenshotForMode('chat');
+        } else if (currentPage === 'notes') {
+          // In interview mode - take screenshot and add to accumulation
+          window.electronAPI.takeScreenshotForMode('interview');
+        }
+      }
 
       // Loading state for screenshots
       document.addEventListener('keydown', (e) => {
@@ -377,6 +636,26 @@
           statusEl.className = 'loading';
         }
       });
+
+      // Cmd+Enter to process accumulated screenshots
+      document.addEventListener('keydown', (e) => {
+        if (e.metaKey && e.key === 'Enter') {
+          console.log('Cmd+Enter pressed, currentPage:', currentPage, 'screenshots:', accumulatedScreenshots.length);
+          if (currentPage === 'notes' && accumulatedScreenshots.length > 0) {
+            console.log('Processing accumulated screenshots...');
+            e.preventDefault();
+            processAccumulatedScreenshots();
+          } else {
+            console.log('Not processing - either wrong page or no screenshots');
+          }
+        }
+      });
+
+      // Handle screenshot captured for chat mode
+      window.electronAPI.onChatScreenshotCaptured(onChatScreenshotCaptured);
+
+      // Register mode check handler
+      window.electronAPI.onCheckCurrentMode(onCheckCurrentMode);
     }
   </script>
 </body>

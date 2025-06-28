@@ -47,14 +47,18 @@ function makeRequest(url, options = {}) {
 }
 
 // Chat function
-async function sendChatMessage(text) {
+async function sendChatMessage(text, imageData = null) {
   try {
-    console.log('Sending chat message:', text);
+    console.log('Sending chat message - Text:', !!text, 'Image:', !!imageData);
+
+    const payload = {};
+    if (text) payload.text = text;
+    if (imageData) payload.image = imageData;
 
     // Send to backend
     const response = await makeRequest(`${BACKEND_URL}/api/chat`, {
       method: 'POST',
-      body: { text: text }
+      body: payload
     });
 
     console.log('Chat response received:', response);
@@ -75,9 +79,9 @@ async function sendChatMessage(text) {
 }
 
 // Screenshot function
-async function takeScreenshot() {
+async function takeScreenshot(forChat = false) {
   try {
-    console.log('Taking screenshot...');
+    console.log('Taking screenshot...', forChat ? 'for chat' : 'for analysis');
 
     // Get all available sources (screens) with smaller thumbnail for faster processing
     const sources = await desktopCapturer.getSources({
@@ -98,13 +102,37 @@ async function takeScreenshot() {
     const base64Data = screenshot.toPNG().toString('base64');
     console.log(`Screenshot captured, size: ${base64Data.length} characters`);
 
-    console.log('Screenshot captured, sending to backend...');
-    console.log(`Backend URL: ${BACKEND_URL}/api/screenshot`);
+    if (forChat) {
+      // Send screenshot data to chat interface
+      console.log('Sending screenshot to chat interface');
+      win.webContents.send('chat-screenshot-captured', base64Data);
+      return;
+    }
+
+    // Send screenshot to LeetCode Helper for accumulation
+    console.log('Sending screenshot to LeetCode Helper for accumulation');
+    win.webContents.send('leetcode-screenshot-captured', base64Data);
+
+  } catch (error) {
+    console.error('Screenshot error:', error);
+    console.error('Error details:', error.message);
+    if (forChat) {
+      win.webContents.send('chat-error', 'Failed to capture screenshot: ' + error.message);
+    } else {
+      win.webContents.send('screenshot-error', error.message);
+    }
+  }
+}
+
+// Process accumulated screenshots
+async function processAccumulatedScreenshots(screenshots) {
+  try {
+    console.log('Processing accumulated screenshots:', screenshots.length);
 
     // Send to backend
     const response = await makeRequest(`${BACKEND_URL}/api/screenshot`, {
       method: 'POST',
-      body: { image: base64Data }
+      body: { images: screenshots }
     });
 
     console.log('Backend response received:', response);
@@ -119,7 +147,7 @@ async function takeScreenshot() {
     }
 
   } catch (error) {
-    console.error('Screenshot error:', error);
+    console.error('Screenshot processing error:', error);
     console.error('Error details:', error.message);
     win.webContents.send('screenshot-error', error.message);
   }
@@ -195,9 +223,11 @@ app.whenReady().then(() => {
   });
 
   // Screenshot shortcut: cmd + shift + 1
-  globalShortcut.register('CommandOrControl+Shift+1', () => {
-    console.log('Screenshot shortcut triggered');
-    takeScreenshot();
+  globalShortcut.register('CommandOrControl+Shift+1', async () => {
+    console.log('Screenshot shortcut pressed');
+
+    // Ask renderer which mode we're in and let it handle the screenshot
+    win.webContents.send('check-current-mode');
   });
 
   // Create tray with error handling for icon
@@ -220,8 +250,24 @@ app.whenReady().then(() => {
   }
 
   // IPC Handlers for chat functionality
-  ipcMain.handle('chat:send-message', async (event, text) => {
-    await sendChatMessage(text);
+  ipcMain.handle('chat:send-message', async (event, text, imageData) => {
+    await sendChatMessage(text, imageData);
+    return true;
+  });
+
+  // IPC Handler for screenshot mode detection
+  ipcMain.handle('screenshot:take-for-mode', async (event, mode) => {
+    if (mode === 'chat') {
+      await takeScreenshot(true);
+    } else {
+      await takeScreenshot(false);
+    }
+    return true;
+  });
+
+  // IPC Handler for processing accumulated screenshots
+  ipcMain.handle('screenshot:process-accumulated', async (event, screenshots) => {
+    await processAccumulatedScreenshots(screenshots);
     return true;
   });
 });

@@ -5,7 +5,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
     // Listen for screenshot solution from main process
     onScreenshotSolution: (callback) => {
+        console.log('Setting up screenshot-solution listener in preload.js');
         ipcRenderer.on('screenshot-solution', (event, solution) => {
+            console.log('Preload.js received screenshot-solution event, solution length:', solution.length);
             callback(solution);
         });
     },
@@ -18,7 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Chat functionality
-    sendChatMessage: (text) => ipcRenderer.invoke('chat:send-message', text),
+    sendChatMessage: (text, imageData) => ipcRenderer.invoke('chat:send-message', text, imageData),
 
     onChatResponse: (callback) => {
         ipcRenderer.on('chat-response', (event, response) => {
@@ -31,6 +33,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
             callback(error);
         });
     },
+
+    // Screenshot functionality for chat
+    onChatScreenshotCaptured: (callback) => {
+        ipcRenderer.on('chat-screenshot-captured', (event, imageData) => {
+            callback(imageData);
+        });
+    },
+
+    // Screenshot functionality for LeetCode Helper
+    onLeetcodeScreenshotCaptured: (callback) => {
+        ipcRenderer.on('leetcode-screenshot-captured', (event, imageData) => {
+            callback(imageData);
+        });
+    },
+
+    processAccumulatedScreenshots: (screenshots) => ipcRenderer.invoke('screenshot:process-accumulated', screenshots),
+
+    onCheckCurrentMode: (callback) => {
+        ipcRenderer.on('check-current-mode', () => {
+            callback();
+        });
+    },
+
+    takeScreenshotForMode: (mode) => ipcRenderer.invoke('screenshot:take-for-mode', mode),
 
     // Remove listeners when needed
     removeAllListeners: (channel) => {

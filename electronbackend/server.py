@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 import base64
 from gemsdk import GeminiClient
 import google.generativeai as genai
+from PIL import Image
+from io import BytesIO
 
 load_dotenv()
 
@@ -100,30 +102,98 @@ def api_test_gemini():
 
 @APP.post("/api/chat")
 def api_chat():
-    """Analyze text and provide a short answer."""
+    """Analyze text and/or image and provide a short answer."""
     try:
         log.info("=== Chat API called ===")
         j = request.get_json(force=True, silent=True) or {}
 
-        # Get text from request
+        # Get text and image from request
         user_text = j.get("text", "").strip()
-        if not user_text:
-            log.error("No text provided in request")
-            return jsonify(error="No text provided"), 400
+        image_data = j.get("image")
 
-        log.info(f"Received chat text: {user_text[:100]}...")
+        if not user_text and not image_data:
+            log.error("No text or image provided in request")
+            return jsonify(error="No text or image provided"), 400
 
-        # Send to Gemini for analysis
-        prompt = f"Analyze this text and answer what is asked for in short: {user_text}"
-        log.info(f"Using chat prompt: {prompt[:100]}...")
+        log.info(
+            f"Received chat - Text: {'Yes' if user_text else 'No'}, Image: {'Yes' if image_data else 'No'}"
+        )
+        if user_text:
+            log.info(f"Text content: {user_text[:100]}...")
+        if image_data:
+            log.info(f"Image data length: {len(image_data)} characters")
 
         try:
             log.info("Calling Gemini for chat analysis...")
 
-            # Use the same GeminiClient but for text-only
+            # Configure Gemini
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
+
+            # Prepare content based on what we have
+            content = []
+
+            if user_text and image_data:
+                # Both text and image
+                prompt = f"Analyze this image and text together and answer what is asked for in short. Text: {user_text}"
+                content.append(prompt)
+
+                # Process image
+                image_data_clean = (
+                    image_data.split(",")[1]
+                    if image_data.startswith("data:image")
+                    else image_data
+                )
+                image_bytes = base64.b64decode(image_data_clean)
+                image = Image.open(BytesIO(image_bytes))
+
+                # Resize if needed (same as screenshot logic)
+                max_dimension = 1024
+                if max(image.size) > max_dimension:
+                    ratio = max_dimension / max(image.size)
+                    new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                    image = image.resize(new_size, Image.Resampling.LANCZOS)
+
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+
+                content.append(image)
+                log.info(f"Prepared multimodal content: text + image ({image.size})")
+
+            elif image_data:
+                # Image only
+                prompt = "Analyze this image and answer what is asked for in short"
+                content.append(prompt)
+
+                # Process image (same logic as above)
+                image_data_clean = (
+                    image_data.split(",")[1]
+                    if image_data.startswith("data:image")
+                    else image_data
+                )
+                image_bytes = base64.b64decode(image_data_clean)
+                image = Image.open(BytesIO(image_bytes))
+
+                max_dimension = 1024
+                if max(image.size) > max_dimension:
+                    ratio = max_dimension / max(image.size)
+                    new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                    image = image.resize(new_size, Image.Resampling.LANCZOS)
+
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+
+                content.append(image)
+                log.info(f"Prepared image-only content: image ({image.size})")
+
+            else:
+                # Text only
+                prompt = f"Analyze this text and answer what is asked for in short: {user_text}"
+                content.append(prompt)
+                log.info("Prepared text-only content")
+
+            # Send to Gemini
+            response = model.generate_content(content)
 
             if response.text:
                 log.info("Successfully received chat response from Gemini")
@@ -137,48 +207,56 @@ def api_chat():
 
         except Exception as gemini_error:
             log.error(f"Gemini chat analysis failed: {gemini_error}")
+            import traceback
+
+            log.error(f"Full traceback: {traceback.format_exc()}")
             return jsonify(
-                error=f"Failed to analyze text: {str(gemini_error)}", success=False
+                error=f"Failed to analyze: {str(gemini_error)}", success=False
             )
 
     except Exception as e:
         log.error(f"Chat API error: {e}")
+        import traceback
+
+        log.error(f"Full traceback: {traceback.format_exc()}")
         return jsonify(error=str(e), success=False)
 
 
 @APP.post("/api/screenshot")
 def api_screenshot():
-    """Analyze screenshot and provide solution."""
+    """Analyze screenshot(s) and provide solution."""
     try:
         log.info("=== Screenshot API called ===")
         j = request.get_json(force=True, silent=True) or {}
 
-        # Get base64 image data
+        # Get image data - can be single image or array of images
         image_data = j.get("image")
-        if not image_data:
+        images_data = j.get("images", [])
+
+        # Support both single image and multiple images
+        if image_data and not images_data:
+            images_data = [image_data]
+        elif not images_data:
             log.error("No image data provided in request")
             return jsonify(error="No image data provided"), 400
 
-        log.info(f"Received image data, length: {len(image_data)} characters")
-
-        # Remove data URL prefix if present
-        if image_data.startswith("data:image"):
-            image_data = image_data.split(",")[1]
-            log.info("Removed data URL prefix from image data")
-
-        log.info("Received screenshot for analysis")
+        log.info(f"Received {len(images_data)} screenshot(s) for analysis")
 
         # Send to Gemini for analysis
-        prompt = "Solve this question, and give me the code for the same."
+        if len(images_data) == 1:
+            prompt = "Solve this question, and give me the code for the same."
+        else:
+            prompt = f"Analyze these {len(images_data)} screenshots which show different parts of the same coding question. Solve the complete question and provide the code solution."
+
         log.info(f"Using prompt: {prompt}")
 
         try:
-            log.info("Calling GeminiClient.analyze_image_with_text...")
-            response = GEMINI_CLIENT.analyze_image_with_text(
-                image_base64=image_data, prompt=prompt
+            log.info("Calling GeminiClient.analyze_multiple_images...")
+            response = GEMINI_CLIENT.analyze_multiple_images(
+                images_base64=images_data, prompt=prompt
             )
 
-            log.info("Successfully analyzed screenshot with Gemini")
+            log.info("Successfully analyzed screenshots with Gemini")
             log.info(f"Response length: {len(response)}")
             log.info(f"Response preview: {response[:200]}...")
 
