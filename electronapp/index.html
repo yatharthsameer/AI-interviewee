@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: rgba(30, 30, 30, .85);
+      overflow: hidden;
+      font-family: monospace;
+    }
+
+    #container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* Pages */
+    .page {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+    }
+
+    .page.active {
+      display: flex;
+    }
+
+    /* Notes page */
+    #note {
+      flex: 1;
+      width: 100%;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: #eee;
+      font: 15px/1.4 monospace;
+      padding: 12px;
+      resize: none;
+    }
+
+    #solution {
+      flex: 1;
+      width: 100%;
+      border: none;
+      outline: none;
+      background: rgba(40, 40, 40, .9);
+      color: #fff;
+      font: 13px/1.3 monospace;
+      padding: 12px;
+      resize: none;
+      display: none;
+      white-space: pre-wrap;
+      border-top: 1px solid #555;
+    }
+
+    /* Chat page */
+    #chatContainer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    #chatMessages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #chatInputContainer {
+      display: flex;
+      gap: 8px;
+      padding: 8px 0;
+      border-top: 1px solid #555;
+    }
+
+    #chatInput {
+      flex: 1;
+      padding: 8px;
+      background: rgba(60, 60, 60, .8);
+      color: #eee;
+      border: 1px solid #666;
+      border-radius: 4px;
+      font: 13px monospace;
+      outline: none;
+    }
+
+    #sendBtn {
+      padding: 8px 12px;
+      background: rgba(70, 130, 180, .8);
+      color: #fff;
+      border: 1px solid #5a9fd4;
+      border-radius: 4px;
+      cursor: pointer;
+      font: 12px monospace;
+      min-width: 60px;
+    }
+
+    #sendBtn:hover {
+      background: rgba(90, 150, 200, .9);
+    }
+
+    #sendBtn:disabled {
+      background: rgba(50, 50, 50, .5);
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    /* Chat bubbles */
+    .message {
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      margin: 2px 0;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      font: 13px/1.4 monospace;
+    }
+
+    .message.user {
+      background: rgba(70, 130, 180, .8);
+      color: #fff;
+      align-self: flex-end;
+    }
+
+    .message.ai {
+      background: rgba(60, 60, 60, .8);
+      color: #eee;
+      align-self: flex-start;
+    }
+
+    .message.error {
+      background: rgba(180, 70, 70, .8);
+      color: #fff;
+      align-self: flex-start;
+    }
+
+    /* Common elements */
+    #status {
+      position: absolute;
+      top: 5px;
+      right: 10px;
+      color: #888;
+      font: 10px monospace;
+      z-index: 100;
+    }
+
+    #buttonContainer {
+      display: flex;
+      padding: 8px;
+      gap: 8px;
+      border-top: 1px solid #555;
+      background: rgba(20, 20, 20, .9);
+    }
+
+    .btn {
+      flex: 1;
+      padding: 8px 12px;
+      background: rgba(60, 60, 60, .8);
+      color: #eee;
+      border: 1px solid #666;
+      border-radius: 4px;
+      cursor: pointer;
+      font: 12px monospace;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: rgba(80, 80, 80, .9);
+      border-color: #888;
+    }
+
+    .btn:active {
+      background: rgba(100, 100, 100, .9);
+    }
+
+    .btn.active {
+      background: rgba(70, 130, 180, .8);
+      border-color: #5a9fd4;
+    }
+
+    .btn.clear {
+      background: rgba(80, 50, 50, .8);
+      border-color: #a66;
+    }
+
+    .btn.clear:hover {
+      background: rgba(100, 60, 60, .9);
+    }
+
+    .error {
+      color: #f44 !important;
+    }
+
+    .loading {
+      color: #fa0 !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="container">
+    <div id="status">Stealth Notes</div>
+
+    <!-- Notes Page -->
+    <div id="notesPage" class="page active">
+      <!-- Original notes section -->
+      <textarea id="note" readonly>
+🕶  Interview crib-sheet
+-----------------------
+
+
+📸 Press Cmd+Shift+1 to analyze screenshot
+      </textarea>
+
+      <!-- Solution display area -->
+      <textarea id="solution" readonly placeholder="Screenshot solution will appear here..."></textarea>
+    </div>
+
+    <!-- Chat Page -->
+    <div id="chatPage" class="page">
+      <div id="chatContainer">
+        <div id="chatMessages"></div>
+        <div id="chatInputContainer">
+          <input type="text" id="chatInput" placeholder="Ask a question..." />
+          <button id="sendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Button container -->
+    <div id="buttonContainer">
+      <button class="btn clear" id="clearBtn">Clear Solution</button>
+      <button class="btn" id="chatBtn">Chat</button>
+      <button class="btn" id="dummyBtn2">Button 3</button>
+    </div>
+  </div>
+
+  <script>
+    // Page management
+    const notesPage = document.getElementById('notesPage');
+    const chatPage = document.getElementById('chatPage');
+    const chatBtn = document.getElementById('chatBtn');
+    const clearBtn = document.getElementById('clearBtn');
+
+    let currentPage = 'notes';
+
+    function showPage(pageName) {
+      if (pageName === 'chat') {
+        notesPage.classList.remove('active');
+        chatPage.classList.add('active');
+        chatBtn.classList.add('active');
+        clearBtn.classList.remove('active');
+        currentPage = 'chat';
+        document.getElementById('status').textContent = 'Chat Mode';
+      } else {
+        chatPage.classList.remove('active');
+        notesPage.classList.add('active');
+        chatBtn.classList.remove('active');
+        clearBtn.classList.remove('active');
+        currentPage = 'notes';
+        document.getElementById('status').textContent = 'Stealth Notes';
+      }
+    }
+
+    // Chat functionality
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    function addMessage(text, type = 'user') {
+      const messageEl = document.createElement('div');
+      messageEl.className = `message ${type}`;
+      messageEl.textContent = text;
+      chatMessages.appendChild(messageEl);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function sendMessage() {
+      const text = chatInput.value.trim();
+      if (!text) return;
+
+      // Add user message
+      addMessage(text, 'user');
+      chatInput.value = '';
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending...';
+
+      // Send to backend
+      if (window.electronAPI) {
+        window.electronAPI.sendChatMessage(text);
+      }
+    }
+
+    // Button event listeners
+    chatBtn.addEventListener('click', () => showPage('chat'));
+    clearBtn.addEventListener('click', () => {
+      if (currentPage === 'notes') {
+        document.getElementById('solution').style.display = 'none';
+        document.getElementById('note').style.display = 'block';
+        document.getElementById('status').textContent = 'Stealth Notes';
+        document.getElementById('status').className = '';
+      } else {
+        showPage('notes');
+      }
+    });
+
+    // Chat input handlers
+    sendBtn.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    // Handle electron API
+    if (window.electronAPI) {
+      const statusEl = document.getElementById('status');
+      const solutionEl = document.getElementById('solution');
+      const noteEl = document.getElementById('note');
+
+      // Chat response handlers
+      window.electronAPI.onChatResponse((response) => {
+        addMessage(response, 'ai');
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+
+      window.electronAPI.onChatError((error) => {
+        addMessage(`Error: ${error}`, 'error');
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+
+      // Screenshot handlers (existing functionality)
+      window.electronAPI.onScreenshotSolution((solution) => {
+        if (currentPage !== 'notes') showPage('notes');
+        console.log('Received solution:', solution);
+        statusEl.textContent = 'Solution Ready';
+        statusEl.className = '';
+
+        solutionEl.style.display = 'block';
+        solutionEl.value = solution;
+        noteEl.style.display = 'none';
+
+        setTimeout(() => {
+          solutionEl.style.display = 'none';
+          noteEl.style.display = 'block';
+          statusEl.textContent = 'Stealth Notes';
+        }, 60000);
+      });
+
+      window.electronAPI.onScreenshotError((error) => {
+        console.error('Screenshot error:', error);
+        statusEl.textContent = 'Error: ' + error;
+        statusEl.className = 'error';
+
+        setTimeout(() => {
+          statusEl.textContent = currentPage === 'chat' ? 'Chat Mode' : 'Stealth Notes';
+          statusEl.className = '';
+        }, 5000);
+      });
+
+      // Loading state for screenshots
+      document.addEventListener('keydown', (e) => {
+        if (e.metaKey && e.shiftKey && e.key === '1') {
+          if (currentPage !== 'notes') showPage('notes');
+          statusEl.textContent = 'Processing...';
+          statusEl.className = 'loading';
+        }
+      });
+    }
+  </script>
+</body>
+
+</html>

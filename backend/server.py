@@ -1,130 +1,78 @@
-# -*- coding: utf-8 -*-
-import os, threading, uuid
+# server.py ── ultra-slim backend (Gemini only)
+
+import os, logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from heygensdk import HeyGenSDK
 from conversation import Conversation
 from dotenv import load_dotenv
 
-app = Flask(__name__)
-CORS(app)
-
-hg = HeyGenSDK()
-conv = {}  # sid -> Conversation
-lock = threading.Lock()
-# load .env file
 load_dotenv()
 
-# ───────────────────────── session bootstrap ────────────────────────
-@app.route("/api/session", methods=["POST"])
-def new_session():
-    body = request.get_json(silent=True) or {}
-    avatar = body.get("avatar_id") or os.getenv("HEYGEN_AVATAR_ID")
-    voice = body.get("voice_id") or os.getenv("HEYGEN_VOICE_ID")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
+log = logging.getLogger("server")
 
-    if not avatar or not voice:
-        return jsonify(error="HEYGEN_AVATAR_ID and HEYGEN_VOICE_ID must be set"), 400
+# ────────── sanity check ──────────
+if not os.getenv("GEMINI_API_KEY"):
+    raise RuntimeError("GEMINI_API_KEY must be set in env")
 
-    data = hg.create_session(
-        avatar_name=avatar, voice_id=voice, disable_idle_timeout=False
-    )
-    sid = data["session_id"]
-
-    # ── field extraction (v2-alpha spec) ────────────────────────────
-    sdp_offer = data.get("sdp")         # ← always a dict {type,sdp}
-    ice       = (data.get("ice_servers") or
-                 data.get("ice_servers2") or  # some plans return this
-                 data.get("iceServers"))
-
-    if not sdp_offer or not ice:
-        # dump the whole payload so you can inspect it
-        return jsonify(
-            error="Un-recognised streaming.new response",
-            payload=data
-        ), 502
-
-    with lock:
-        conv[sid] = Conversation(sid, hg)
-
-    return jsonify({
-        "session_id": sid,
-        "sdpOffer":   sdp_offer,        # full dict, client passes as-is
-        "iceServers": ice
-    })
+# ────────── app / state ──────────
+APP = Flask(__name__)
+CORS(APP)  # allow browser → 5001
+CHAT = Conversation()  # one shared convo (good enough for an MVP)
 
 
-# ────────────────────────── WebRTC helpers ──────────────────────────
-@app.route("/api/ice", methods=["POST"])
-def ice():
-    j = request.json
-    hg.add_ice_candidate(j["session_id"], j["candidate"])
-    return jsonify(ok=True)
+# ────────── endpoints ────────────
+@APP.post("/api/send_text")
+def api_send_text():
+    j = request.get_json(force=True, silent=True) or {}
+    text = (j.get("text") or "").strip()
+    use_ai = bool(j.get("generate_ai"))  # front-end always sends true
+
+    spoken = CHAT.reply(text, use_ai=use_ai)
+
+    # If empty response, it means speech was buffered
+    if not spoken:
+        return jsonify(spoken="", buffered=True)
+
+    return jsonify(spoken=spoken, buffered=False)
 
 
-@app.route("/api/start", methods=["POST"])
-def start():
-    j = request.get_json(silent=True) or {}
-    sid = j.get("session_id")
-    sdp_str = j.get("sdp")  # this is just the answer.sdp string
-    if not sid or not sdp_str:
-        return jsonify(error="missing session_id or sdp"), 400
+@APP.post("/api/avatar_state")
+def api_avatar_state():
+    """Update avatar speaking state."""
+    j = request.get_json(force=True, silent=True) or {}
+    speaking = bool(j.get("speaking", False))
 
-    # heygensdk now wraps that raw string into {"type":"answer","sdp":...}
-    hg.start_session(sid, sdp_str)
-    return jsonify(ok=True)
+    CHAT.set_avatar_speaking(speaking)
+    return jsonify(success=True)
 
 
-def _terminate_session(sid: str):
-    """helper – stop HeyGen + cleanup Conversation"""
-    try:
-        hg.stop_session(sid)
-    finally:
-        with lock:
-            if (c := conv.pop(sid, None)):
-                # Conversation currently has no resources to release,
-                # but if you add ws/threads later put it here:
-                getattr(c, "close", lambda: None)()
+@APP.get("/api/avatar_state")
+def api_get_avatar_state():
+    """Get current avatar speaking state."""
+    return jsonify(speaking=CHAT._avatar_speaking)
 
 
-@app.route("/api/stop",  methods=["POST"])   # kept for backward compatibility
-@app.route("/api/close", methods=["POST"])   # ← new preferred endpoint
-def close():
-    sid = (request.json or {}).get("session_id")
-    if not sid:
-        return jsonify(error="session_id required"), 400
-    _terminate_session(sid)
-    return jsonify(closed=True)
+@APP.get("/api/check_accumulated")
+def api_check_accumulated():
+    """Check if there's an accumulated response ready."""
+    response = CHAT.get_accumulated_response()
+    if response:
+        return jsonify(spoken=response, available=True)
+    return jsonify(available=False)
 
 
-# ──────────────────────────── TTS proxy ────────────────────────────
-@app.route("/api/send_text", methods=["POST"])
-def tts():
-    j = request.json
-    sid = j["session_id"]
-    text = j.get("text", "").strip()
-    use = bool(j.get("generate_ai"))
-
-    c = conv.get(sid)
-    if not c:
-        return jsonify(error="session not found"), 404
-
-    # Handle empty text case
-    if not text:
-        spoken = "Hey, I didn't quite get what you said. Can you repeat that for me again?"
-        c.hg.send_text(sid, spoken)
-        return jsonify(spoken=spoken)
-
-    spoken = c.send(text, use_ai=use)
-    return jsonify(spoken=spoken)
+@APP.post("/api/interrupt")
+def api_interrupt():
+    """Handle an interruption: stop avatar, clear buffer, and start 5s accumulation window."""
+    CHAT.interrupt()
+    return jsonify(success=True)
 
 
-# ────────────────────────────────────────────────────────────────────
+# ────────── run ───────────────────
 if __name__ == "__main__":
-    if not (
-        os.getenv("HEYGEN_API_KEY")
-        and os.getenv("GEMINI_API_KEY")
-        and os.getenv("HEYGEN_AVATAR_ID")
-        and os.getenv("HEYGEN_VOICE_ID")
-    ):
-        raise RuntimeError("Set HEYGEN_* and GEMINI_API_KEY in env")
-    app.run(host="0.0.0.0", port=5001, threaded=True)
+    log.info("★ Gemini-only backend ready on http://0.0.0.0:5001")
+    APP.run(host="0.0.0.0", port=5001, threaded=True)

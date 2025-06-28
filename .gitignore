@@ -28,4 +28,20 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
-*.swo 
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Large model files
+backend/models/ggml-base.en.bin
+electronbackend/models/ggml-base.en.bin 
