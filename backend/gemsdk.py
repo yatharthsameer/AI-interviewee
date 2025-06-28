@@ -68,6 +68,7 @@ class GeminiSDK:
                 }
             )
         return out
+    
 
     def stream(
         self,

@@ -50,6 +50,12 @@ def api_avatar_state():
     return jsonify(success=True)
 
 
+@APP.get("/api/avatar_state")
+def api_get_avatar_state():
+    """Get current avatar speaking state."""
+    return jsonify(speaking=CHAT._avatar_speaking)
+
+
 @APP.get("/api/check_accumulated")
 def api_check_accumulated():
     """Check if there's an accumulated response ready."""

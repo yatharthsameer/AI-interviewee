@@ -2,8 +2,8 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useTabAudio } from "../hooks/useTabAudio";
 
 const HEYGEN_API_KEY = import.meta.env.VITE_HEYGEN_API_KEY || "";
-// const AVATAR_NAME = "7d89c5d221a843afab7f7412afcd743b"; // Yatharth Sameer avatar ID
-const AVATAR_NAME = "Wayne_20240711"; // from HeyGen docs demo
+const AVATAR_NAME = "fac378f763b34a3a88c1dfd010609398"; // Yatharth Sameer avatar ID
+// const AVATAR_NAME = "Wayne_20240711"; // from HeyGen docs demo
 
 const WS_URL = "ws://localhost:8765";
 const BACKEND = "http://localhost:5001";
@@ -106,16 +106,24 @@ export default function HeygenAvatar() {
     }, 5100); // 5.1s to ensure backend timer elapses
   }, [notifyAvatarState, startAccumulatedResponsePolling]);
 
+  // Handle real-time voice activity for immediate interruption detection
+  const onVoiceActivity = useCallback(
+    async (speaking) => {
+      if (speaking && avatarSpeaking) {
+        // Interviewer started speaking while avatar is talking - immediate interruption
+        console.log("[HeygenAvatar] Real-time interruption detected!");
+        await handleInterruption();
+      }
+    },
+    [avatarSpeaking, handleInterruption]
+  );
+
   // Callback for when STT returns a final transcript
   const onFinalSTT = useCallback(
     async (text) => {
-      // If avatar is speaking, treat as interruption
-      if (avatarSpeaking) {
-        await handleInterruption();
-        // Buffer the current speech segment (backend will accumulate)
-        // Do not send to /api/send_text now; backend will handle accumulation
-        return;
-      }
+      // Note: Real-time interruption is now handled by onVoiceActivity
+      // This only processes complete speech segments
+
       try {
         // 1. Send transcript to backend for Gemini response
         const resp = await fetch(`${BACKEND}/api/send_text`, {
@@ -162,12 +170,7 @@ export default function HeygenAvatar() {
         setError(err.message);
       }
     },
-    [
-      avatarSpeaking,
-      handleInterruption,
-      notifyAvatarState,
-      startAccumulatedResponsePolling,
-    ]
+    [notifyAvatarState, startAccumulatedResponsePolling]
   );
 
   // Cleanup interruption timer on unmount
@@ -179,8 +182,8 @@ export default function HeygenAvatar() {
     };
   }, []);
 
-  // Audio hook
-  const audio = useTabAudio(onFinalSTT);
+  // Audio hook - now with voice activity callback
+  const audio = useTabAudio(onFinalSTT, onVoiceActivity);
 
   async function startInterview() {
     try {

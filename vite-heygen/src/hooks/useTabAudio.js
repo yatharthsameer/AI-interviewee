@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
 
 /**
- *   const audio = useTabAudio(onFinal);
+ *   const audio = useTabAudio(onFinal, onVoiceActivity);
  *   await audio.start();
  *   ...
  *   audio.stop();
  */
-export function useTabAudio(onFinal) {
+export function useTabAudio(onFinal, onVoiceActivity) {
     const wsRef = useRef(null);
     const ctxRef = useRef(null);
     const streamRef = useRef(null);
@@ -94,12 +94,24 @@ export function useTabAudio(onFinal) {
             }
         };
 
-        // When Whisper sends a final result, just call the callback
+        // Handle both voice activity and transcript messages
         ws.onmessage = (e) => {
-            const { text, final } = JSON.parse(e.data || "{}");
-            if (final && text) {
-                console.log("[useTabAudio] Received transcript from backend:", text);
-                onFinal(text);
+            const data = JSON.parse(e.data || "{}");
+
+            if (data.type === "voice_activity") {
+                // Real-time voice activity update
+                console.log("[useTabAudio] Voice activity:", data.speaking ? "STARTED" : "STOPPED");
+                if (onVoiceActivity) {
+                    onVoiceActivity(data.speaking);
+                }
+            } else if (data.type === "transcript" && data.final && data.text) {
+                // Final transcript
+                console.log("[useTabAudio] Received transcript from backend:", data.text);
+                onFinal(data.text);
+            } else if (data.final && data.text) {
+                // Backward compatibility for old format
+                console.log("[useTabAudio] Received transcript from backend:", data.text);
+                onFinal(data.text);
             }
         };
     };
