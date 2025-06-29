@@ -58,6 +58,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     takeScreenshotForMode: (mode) => ipcRenderer.invoke('screenshot:take-for-mode', mode),
 
+    // Handle global shortcut for processing accumulated screenshots
+    onProcessAccumulatedScreenshots: (callback) => {
+        ipcRenderer.on('process-accumulated-screenshots', () => {
+            callback();
+        });
+    },
+
     // Remove listeners when needed
     removeAllListeners: (channel) => {
         ipcRenderer.removeAllListeners(channel);

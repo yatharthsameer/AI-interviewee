@@ -50,6 +50,13 @@
       overflow-y: auto;
       font-size: 13px;
       line-height: 1.4;
+      /* Hide scrollbar */
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* Internet Explorer 10+ */
+    }
+
+    #solution::-webkit-scrollbar {
+      display: none; /* WebKit */
     }
 
     /* Markdown styling overrides for dark theme */
@@ -117,6 +124,49 @@
       font-style: italic;
     }
 
+    /* Loader styling */
+    #loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      z-index: 1000;
+      background: rgba(30, 30, 30, 0.95);
+      padding: 24px;
+      border-radius: 8px;
+      border: 1px solid #555;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid #70a1d4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loader-text {
+      color: #ccc;
+      font: 13px monospace;
+      text-align: center;
+    }
+
+    .loader-subtext {
+      color: #888;
+      font: 11px monospace;
+      text-align: center;
+    }
+
     /* Chat page */
     #chatContainer {
       flex: 1;
@@ -137,6 +187,13 @@
       gap: 8px;
       min-height: 0;
       height: 0; /* Force flex child to respect parent constraints */
+      /* Hide scrollbar */
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* Internet Explorer 10+ */
+    }
+
+    #chatMessages::-webkit-scrollbar {
+      display: none; /* WebKit */
     }
 
     #chatInputContainer {
@@ -436,6 +493,12 @@
           <span id="processHint">Press Cmd+Enter to process</span>
         </div>
       </div>
+      <!-- Loader -->
+      <div id="loader">
+        <div class="spinner"></div>
+        <div class="loader-text">Processing screenshots...</div>
+        <div class="loader-subtext">Analyzing with AI</div>
+      </div>
     </div>
 
     <!-- Chat Page -->
@@ -583,31 +646,44 @@
                   document.getElementById('screenshotPreviewArea').style.display = 'none';
                 }
 
-                function clearAccumulatedScreenshots() {
-                  accumulatedScreenshots = [];
-                  hideScreenshotPreviewArea();
-                  console.log('Cleared all accumulated screenshots');
-                }
+                              function clearAccumulatedScreenshots() {
+                                accumulatedScreenshots = [];
+                                hideScreenshotPreviewArea();
+                                console.log('Cleared all accumulated screenshots');
+                              }
 
-                async function processAccumulatedScreenshots() {
-                  if (accumulatedScreenshots.length === 0) {
-                    console.log('No screenshots to process');
-                    return;
-                  }
-
-                console.log(`Processing ${accumulatedScreenshots.length} accumulated screenshots`);
-                hideScreenshotPreviewArea();
-
-                try {
-                  if (window.electronAPI) {
-                    await window.electronAPI.processAccumulatedScreenshots([...accumulatedScreenshots]);
-                    clearAccumulatedScreenshots();
-                  }
-                } catch (error) {
-                  console.error('Error processing screenshots:', error);
-                  showScreenshotPreviewArea(); // Show preview area again on error
-                }
+              // Loader functions
+              function showLoader() {
+                document.getElementById('loader').style.display = 'flex';
+                console.log('Loader shown');
               }
+
+              function hideLoader() {
+                document.getElementById('loader').style.display = 'none';
+                console.log('Loader hidden');
+              }
+
+                            async function processAccumulatedScreenshots() {
+                              if (accumulatedScreenshots.length === 0) {
+                                console.log('No screenshots to process');
+                                return;
+                              }
+
+                            console.log(`Processing ${accumulatedScreenshots.length} accumulated screenshots`);
+                            hideScreenshotPreviewArea();
+                            showLoader(); // Show loader when processing starts
+
+                            try {
+                              if (window.electronAPI) {
+                                await window.electronAPI.processAccumulatedScreenshots([...accumulatedScreenshots]);
+                                clearAccumulatedScreenshots();
+                              }
+                            } catch (error) {
+                              console.error('Error processing screenshots:', error);
+                            hideLoader(); // Hide loader on error
+                              showScreenshotPreviewArea(); // Show preview area again on error
+                            }
+                          }
 
     // Page management
     const notesPage = document.getElementById('notesPage');
@@ -772,6 +848,9 @@
         console.log('Received solution:', solution);
         console.log('Solution length:', solution.length);
         
+        // Hide loader when solution is received
+        hideLoader();
+        
         // Set the solution with markdown rendering
         setSolutionContent(solution);
         console.log('Solution set with markdown rendering');
@@ -785,6 +864,10 @@
 
       window.electronAPI.onScreenshotError((error) => {
         console.error('Screenshot error:', error);
+
+        // Hide loader on error
+        hideLoader();
+
         statusEl.textContent = 'Error: ' + error;
         statusEl.className = 'error';
 
@@ -827,17 +910,14 @@
         }
       });
 
-      // Cmd+Enter to process accumulated screenshots
-      document.addEventListener('keydown', (e) => {
-        if (e.metaKey && e.key === 'Enter') {
-          console.log('Cmd+Enter pressed, currentPage:', currentPage, 'screenshots:', accumulatedScreenshots.length);
-          if (currentPage === 'notes' && accumulatedScreenshots.length > 0) {
-            console.log('Processing accumulated screenshots...');
-            e.preventDefault();
-            processAccumulatedScreenshots();
-          } else {
-            console.log('Not processing - either wrong page or no screenshots');
-          }
+      // Handle global shortcut for processing accumulated screenshots
+      window.electronAPI.onProcessAccumulatedScreenshots(() => {
+        console.log('Global Cmd+Enter pressed, currentPage:', currentPage, 'screenshots:', accumulatedScreenshots.length);
+        if (currentPage === 'notes' && accumulatedScreenshots.length > 0) {
+          console.log('Processing accumulated screenshots...');
+          processAccumulatedScreenshots();
+        } else {
+          console.log('Not processing - either wrong page or no screenshots');
         }
       });
 
