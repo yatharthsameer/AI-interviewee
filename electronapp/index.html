@@ -3,6 +3,8 @@
 
 <head>
   <meta charset="utf-8">
+  <!-- GitHub Markdown CSS for beautiful styling -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown.min.css">
   <style>
     html,
     body {
@@ -34,7 +36,7 @@
       display: flex;
     }
 
-    /* Notes page */
+    /* Notes page - Updated for markdown rendering */
     #solution {
       flex: 1;
       width: 100%;
@@ -42,12 +44,77 @@
       outline: none;
       background: rgba(40, 40, 40, .9);
       color: #fff;
-      font: 13px/1.3 monospace;
       padding: 12px;
-      resize: none;
       display: block;
-      white-space: pre-wrap;
       border-top: 1px solid #555;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    /* Markdown styling overrides for dark theme */
+    #solution.markdown-body {
+      background: rgba(40, 40, 40, .9) !important;
+      color: #fff !important;
+      font-size: 13px !important;
+      line-height: 1.4 !important;
+    }
+
+    #solution.markdown-body h1,
+    #solution.markdown-body h2,
+    #solution.markdown-body h3,
+    #solution.markdown-body h4,
+    #solution.markdown-body h5,
+    #solution.markdown-body h6 {
+      color: #fff !important;
+      border-bottom-color: #555 !important;
+    }
+
+    #solution.markdown-body pre {
+      background: rgba(20, 20, 20, .8) !important;
+      border: 1px solid #555 !important;
+    }
+
+    #solution.markdown-body code {
+      background: rgba(20, 20, 20, .6) !important;
+      color: #f8f8f2 !important;
+      border: 1px solid #444 !important;
+    }
+
+    #solution.markdown-body blockquote {
+      color: #ccc !important;
+      border-left-color: #666 !important;
+    }
+
+    #solution.markdown-body table tr {
+      background: rgba(50, 50, 50, .5) !important;
+      border-top-color: #555 !important;
+    }
+
+    #solution.markdown-body table tr:nth-child(2n) {
+      background: rgba(60, 60, 60, .5) !important;
+    }
+
+    #solution.markdown-body table th,
+    #solution.markdown-body table td {
+      border-color: #555 !important;
+    }
+
+    #solution.markdown-body a {
+      color: #79b8ff !important;
+    }
+
+    #solution.markdown-body strong {
+      color: #fff !important;
+    }
+
+    /* Empty state styling */
+    #solution.empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-style: italic;
     }
 
     /* Chat page */
@@ -150,14 +217,13 @@
       opacity: 0.6;
     }
 
-    /* Chat bubbles */
+    /* Chat bubbles - Updated for markdown */
     .message {
       max-width: 80%;
       padding: 8px 12px;
       border-radius: 12px;
       margin: 2px 0;
       word-wrap: break-word;
-      white-space: pre-wrap;
       font: 13px/1.4 monospace;
     }
 
@@ -177,6 +243,64 @@
       background: rgba(180, 70, 70, .8);
       color: #fff;
       align-self: flex-start;
+    }
+
+    /* Markdown styling for chat messages */
+    .message.markdown-body {
+      font-size: 13px !important;
+      line-height: 1.4 !important;
+    }
+
+    .message.ai.markdown-body {
+      background: rgba(60, 60, 60, .8) !important;
+      color: #eee !important;
+    }
+
+    .message.ai.markdown-body h1,
+    .message.ai.markdown-body h2,
+    .message.ai.markdown-body h3,
+    .message.ai.markdown-body h4,
+    .message.ai.markdown-body h5,
+    .message.ai.markdown-body h6 {
+      color: #fff !important;
+      border-bottom-color: #555 !important;
+      margin: 8px 0 4px 0 !important;
+    }
+
+    .message.ai.markdown-body pre {
+      background: rgba(20, 20, 20, .8) !important;
+      border: 1px solid #444 !important;
+      margin: 8px 0 !important;
+    }
+
+    .message.ai.markdown-body code {
+      background: rgba(20, 20, 20, .6) !important;
+      color: #f8f8f2 !important;
+      border: 1px solid #333 !important;
+    }
+
+    .message.ai.markdown-body blockquote {
+      color: #ccc !important;
+      border-left-color: #666 !important;
+      margin: 8px 0 !important;
+    }
+
+    .message.ai.markdown-body a {
+      color: #79b8ff !important;
+    }
+
+    .message.ai.markdown-body strong {
+      color: #fff !important;
+    }
+
+    .message.ai.markdown-body ul,
+    .message.ai.markdown-body ol {
+      margin: 8px 0 !important;
+      padding-left: 20px !important;
+    }
+
+    .message.ai.markdown-body p {
+      margin: 8px 0 !important;
     }
 
     /* Common elements */
@@ -303,8 +427,8 @@
 
     <!-- Notes Page -->
     <div id="notesPage" class="page active">
-      <!-- Solution display area -->
-      <textarea id="solution" readonly placeholder="Screenshot solution will appear here..."></textarea>
+      <!-- Solution display area - Changed from textarea to div for markdown -->
+      <div id="solution" class="markdown-body empty">Screenshot solution will appear here...</div>
       <!-- Screenshot Preview Area -->
       <div id="screenshotPreviewArea">
         <div id="screenshotPreviewContainer">
@@ -340,93 +464,150 @@
     </div>
   </div>
 
-  <script>
-                                                                            // Screenshot accumulation for LeetCode Helper
-                                                                            let accumulatedScreenshots = [];
+  <!-- Include marked library for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        // Check if marked library is loaded
+        document.addEventListener('DOMContentLoaded', function () {
+          if (typeof marked === 'undefined') {
+            console.error('Marked library not loaded! Using fallback rendering.');
+          } else {
+            console.log('Marked library loaded successfully');
+          }
+        });
 
-                                                                            function addScreenshotToPreview(imageData) {
-                                                                              console.log('addScreenshotToPreview called with data length:', imageData.length);
-                                                                              accumulatedScreenshots.push(imageData);
-                                                                              console.log('Screenshots array now has:', accumulatedScreenshots.length, 'items');
-                                                                              updateScreenshotPreview();
-                                                                              showScreenshotPreviewArea();
-                                                                              console.log(`Added screenshot, total: ${accumulatedScreenshots.length}`);
-                                                                            }
+        // Markdown rendering functions
+        function renderMarkdown(text) {
+          try {
+            if (typeof marked !== 'undefined') {
+              return marked.parse(text);
+            } else {
+              console.warn('Marked library not available, using fallback');
+              return formatTextFallback(text);
+            }
+          } catch (error) {
+            console.error('Error parsing markdown:', error);
+            return formatTextFallback(text);
+          }
+        }
 
-                                                                            function removeScreenshotFromPreview(index) {
-                                                                              accumulatedScreenshots.splice(index, 1);
-                                                                              updateScreenshotPreview();
-                                                                              if (accumulatedScreenshots.length === 0) {
-                                                                                hideScreenshotPreviewArea();
-                                                                              }
-                                                                              console.log(`Removed screenshot, total: ${accumulatedScreenshots.length}`);
-                                                                            }
+        // Fallback text formatting for basic markdown-like rendering
+        function formatTextFallback(text) {
+          return text
+            // Convert code blocks
+            .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+            // Convert inline code
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // Convert bold text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            // Convert headers
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            // Convert line breaks
+            .replace(/\n/g, '<br>');
+        }
 
-                                                                            function updateScreenshotPreview() {
-                                                                              const container = document.getElementById('screenshotPreviewContainer');
-                                                                              const countEl = document.getElementById('screenshotCount');
+        function setSolutionContent(content) {
+          const solutionEl = document.getElementById('solution');
+          if (!content || content.trim() === '') {
+            solutionEl.innerHTML = 'Screenshot solution will appear here...';
+            solutionEl.classList.add('empty');
+            solutionEl.classList.remove('markdown-body');
+          } else {
+            const renderedContent = renderMarkdown(content);
+            solutionEl.innerHTML = renderedContent;
+            solutionEl.classList.remove('empty');
+            solutionEl.classList.add('markdown-body');
+          }
+        }
 
-                                                                              // Clear existing previews except count and hint
-                                                                              const previews = container.querySelectorAll('.screenshot-preview');
-                                                                              previews.forEach(preview => preview.remove());
+                // Screenshot accumulation for LeetCode Helper
+                let accumulatedScreenshots = [];
 
-                                                                              // Add new previews
-                                                                              accumulatedScreenshots.forEach((imageData, index) => {
-                                                                                const previewDiv = document.createElement('div');
-                                                                                previewDiv.className = 'screenshot-preview';
+                function addScreenshotToPreview(imageData) {
+                  console.log('addScreenshotToPreview called with data length:', imageData.length);
+                  accumulatedScreenshots.push(imageData);
+                  console.log('Screenshots array now has:', accumulatedScreenshots.length, 'items');
+                  updateScreenshotPreview();
+                  showScreenshotPreviewArea();
+                  console.log(`Added screenshot, total: ${accumulatedScreenshots.length}`);
+                }
 
-                                                                                const img = document.createElement('img');
-                                                                                img.src = `data:image/png;base64,${imageData}`;
+                function removeScreenshotFromPreview(index) {
+                  accumulatedScreenshots.splice(index, 1);
+                  updateScreenshotPreview();
+                  if (accumulatedScreenshots.length === 0) {
+                    hideScreenshotPreviewArea();
+                  }
+                  console.log(`Removed screenshot, total: ${accumulatedScreenshots.length}`);
+                }
 
-                                                                                const removeBtn = document.createElement('button');
-                                                                                removeBtn.className = 'screenshot-remove';
-                                                                                removeBtn.textContent = '×';
-                                                                                removeBtn.addEventListener('click', () => removeScreenshotFromPreview(index));
+                function updateScreenshotPreview() {
+                  const container = document.getElementById('screenshotPreviewContainer');
+                  const countEl = document.getElementById('screenshotCount');
 
-                                                                                previewDiv.appendChild(img);
-                                                                                previewDiv.appendChild(removeBtn);
+                // Clear existing previews except count and hint
+                const previews = container.querySelectorAll('.screenshot-preview');
+                previews.forEach(preview => preview.remove());
 
-                                                                                // Insert before the count element
-                                                                                container.insertBefore(previewDiv, countEl);
-                                                                              });
+                // Add new previews
+                accumulatedScreenshots.forEach((imageData, index) => {
+                  const previewDiv = document.createElement('div');
+                  previewDiv.className = 'screenshot-preview';
 
-                                                                              // Update count
-                                                                              countEl.textContent = `${accumulatedScreenshots.length} screenshot${accumulatedScreenshots.length !== 1 ? 's' : ''}`;
-                                                                            }
+                const img = document.createElement('img');
+                img.src = `data:image/png;base64,${imageData}`;
 
-                                                                            function showScreenshotPreviewArea() {
-                                                                              document.getElementById('screenshotPreviewArea').style.display = 'block';
-                                                                            }
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'screenshot-remove';
+                removeBtn.textContent = '×';
+                removeBtn.addEventListener('click', () => removeScreenshotFromPreview(index));
 
-                                                                            function hideScreenshotPreviewArea() {
-                                                                              document.getElementById('screenshotPreviewArea').style.display = 'none';
-                                                                            }
+                previewDiv.appendChild(img);
+                previewDiv.appendChild(removeBtn);
 
-                                                                            function clearAccumulatedScreenshots() {
-                                                                              accumulatedScreenshots = [];
-                                                                              hideScreenshotPreviewArea();
-                                                                              console.log('Cleared all accumulated screenshots');
-                                                                            }
+                // Insert before the count element
+                container.insertBefore(previewDiv, countEl);
+              });
 
-                                                                            async function processAccumulatedScreenshots() {
-                                                                              if (accumulatedScreenshots.length === 0) {
-                                                                                console.log('No screenshots to process');
-                                                                                return;
-                                                                              }
+                // Update count
+                countEl.textContent = `${accumulatedScreenshots.length} screenshot${accumulatedScreenshots.length !== 1 ? 's' : ''}`;
+              }
 
-                                                                              console.log(`Processing ${accumulatedScreenshots.length} accumulated screenshots`);
-                                                                              hideScreenshotPreviewArea();
+                function showScreenshotPreviewArea() {
+                  document.getElementById('screenshotPreviewArea').style.display = 'block';
+                }
 
-                                                                              try {
-                                                                                if (window.electronAPI) {
-                                                                                  await window.electronAPI.processAccumulatedScreenshots([...accumulatedScreenshots]);
-                                                                                  clearAccumulatedScreenshots();
-                                                                                }
-                                                                              } catch (error) {
-                                                                                console.error('Error processing screenshots:', error);
-                                                                                showScreenshotPreviewArea(); // Show preview area again on error
-                                                                              }
-                                                                            }
+                function hideScreenshotPreviewArea() {
+                  document.getElementById('screenshotPreviewArea').style.display = 'none';
+                }
+
+                function clearAccumulatedScreenshots() {
+                  accumulatedScreenshots = [];
+                  hideScreenshotPreviewArea();
+                  console.log('Cleared all accumulated screenshots');
+                }
+
+                async function processAccumulatedScreenshots() {
+                  if (accumulatedScreenshots.length === 0) {
+                    console.log('No screenshots to process');
+                    return;
+                  }
+
+                console.log(`Processing ${accumulatedScreenshots.length} accumulated screenshots`);
+                hideScreenshotPreviewArea();
+
+                try {
+                  if (window.electronAPI) {
+                    await window.electronAPI.processAccumulatedScreenshots([...accumulatedScreenshots]);
+                    clearAccumulatedScreenshots();
+                  }
+                } catch (error) {
+                  console.error('Error processing screenshots:', error);
+                  showScreenshotPreviewArea(); // Show preview area again on error
+                }
+              }
 
     // Page management
     const notesPage = document.getElementById('notesPage');
@@ -454,53 +635,61 @@
       }
     }
 
-    // Chat functionality
+                // Chat functionality with markdown support
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
-                          const imagePreviewContainer = document.getElementById('imagePreviewContainer');
-                          const imagePreview = document.getElementById('imagePreview');
-                          const removeImageBtn = document.getElementById('removeImageBtn');
+                const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+                const imagePreview = document.getElementById('imagePreview');
+                const removeImageBtn = document.getElementById('removeImageBtn');
 
-                          let currentImageData = null;
+                let currentImageData = null;
 
-                          function addMessage(text, type = 'user', imageData = null) {
+                function addMessage(text, type = 'user', imageData = null) {
       const messageEl = document.createElement('div');
       messageEl.className = `message ${type}`;
 
-                          if (imageData && type === 'user') {
-                            // Add image to user message
-                            const img = document.createElement('img');
-                            img.src = `data:image/png;base64,${imageData}`;
-                            img.style.maxWidth = '200px';
-                            img.style.borderRadius = '8px';
-                            img.style.marginBottom = '8px';
-                            img.style.display = 'block';
-                            messageEl.appendChild(img);
-                          }
+                if (imageData && type === 'user') {
+                  // Add image to user message
+                  const img = document.createElement('img');
+                  img.src = `data:image/png;base64,${imageData}`;
+                  img.style.maxWidth = '200px';
+                  img.style.borderRadius = '8px';
+                  img.style.marginBottom = '8px';
+                  img.style.display = 'block';
+                  messageEl.appendChild(img);
+                }
 
-                          if (text) {
-                            const textNode = document.createTextNode(text);
-                            messageEl.appendChild(textNode);
-                          }
+                if (text) {
+                if (type === 'ai') {
+                  // Render AI messages as markdown
+                  const renderedContent = renderMarkdown(text);
+                  messageEl.innerHTML = (imageData && type === 'user' ? messageEl.innerHTML : '') + renderedContent;
+                  messageEl.classList.add('markdown-body');
+                } else {
+                // User messages remain as plain text
+                const textNode = document.createTextNode(text);
+                messageEl.appendChild(textNode);
+              }
+              }
 
       chatMessages.appendChild(messageEl);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-                          function showImagePreview(imageData) {
-                            currentImageData = imageData;
-                            imagePreview.src = `data:image/png;base64,${imageData}`;
-                            imagePreviewContainer.style.display = 'block';
-                            chatInput.placeholder = 'Ask about this image...';
-                          }
+                function showImagePreview(imageData) {
+                  currentImageData = imageData;
+                  imagePreview.src = `data:image/png;base64,${imageData}`;
+                  imagePreviewContainer.style.display = 'block';
+                  chatInput.placeholder = 'Ask about this image...';
+                }
 
-                          function hideImagePreview() {
-                            currentImageData = null;
-                            imagePreview.src = '';
-                            imagePreviewContainer.style.display = 'none';
-                            chatInput.placeholder = 'Ask a question...';
-                          }
+                function hideImagePreview() {
+                  currentImageData = null;
+                  imagePreview.src = '';
+                  imagePreviewContainer.style.display = 'none';
+                  chatInput.placeholder = 'Ask a question...';
+                }
 
     function sendMessage() {
       const text = chatInput.value.trim();
@@ -541,7 +730,7 @@
           console.log('Chat history cleared');
         } else {
           // Clear solution and accumulated screenshots
-          document.getElementById('solution').value = '';
+          setSolutionContent('');
           clearAccumulatedScreenshots();
           console.log('Interview Helper page cleared');
       }
@@ -553,18 +742,17 @@
       if (e.key === 'Enter') sendMessage();
     });
 
-                        removeImageBtn.addEventListener('click', hideImagePreview);
+                removeImageBtn.addEventListener('click', hideImagePreview);
 
-                        // Handle screenshot for chat mode
-                        function onChatScreenshotCaptured(imageData) {
-                          console.log('Chat screenshot captured, showing preview');
-                          showImagePreview(imageData);
-                        }
+                // Handle screenshot for chat mode
+                function onChatScreenshotCaptured(imageData) {
+                  console.log('Chat screenshot captured, showing preview');
+                  showImagePreview(imageData);
+                }
 
     // Handle electron API
     if (window.electronAPI) {
       const statusEl = document.getElementById('status');
-      const solutionEl = document.getElementById('solution');
 
       // Chat response handlers
       window.electronAPI.onChatResponse((response) => {
@@ -579,26 +767,19 @@
         sendBtn.textContent = 'Send';
       });
 
-      // Screenshot handlers (existing functionality)
+      // Screenshot handlers with markdown rendering
       window.electronAPI.onScreenshotSolution((solution) => {
         console.log('Received solution:', solution);
         console.log('Solution length:', solution.length);
         
-        // Set the solution in the textarea (now visible by default)
-        const solutionElement = document.getElementById('solution');
-        if (solutionElement) {
-          solutionElement.value = solution;
-          console.log('Solution set in textarea');
-        } else {
-          console.error('Could not find solution textarea element!');
-        }
+        // Set the solution with markdown rendering
+        setSolutionContent(solution);
+        console.log('Solution set with markdown rendering');
 
         // Auto-clear after 60 seconds
         setTimeout(() => {
-          if (solutionElement) {
-            solutionElement.value = '';
-            console.log('Auto-cleared solution after 60 seconds');
-          }
+          setSolutionContent('');
+          console.log('Auto-cleared solution after 60 seconds');
         }, 60000);
       });
 
