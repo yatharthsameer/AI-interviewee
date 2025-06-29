@@ -47,13 +47,14 @@ function makeRequest(url, options = {}) {
 }
 
 // Chat function
-async function sendChatMessage(text, imageData = null) {
+async function sendChatMessage(text, imageData = null, model = 'gemini-1.5-flash') {
   try {
-    console.log('Sending chat message - Text:', !!text, 'Image:', !!imageData);
+    console.log('Sending chat message - Text:', !!text, 'Image:', !!imageData, 'Model:', model);
 
     const payload = {};
     if (text) payload.text = text;
     if (imageData) payload.image = imageData;
+    payload.model = model;
 
     // Send to backend
     const response = await makeRequest(`${BACKEND_URL}/api/chat`, {
@@ -125,14 +126,14 @@ async function takeScreenshot(forChat = false) {
 }
 
 // Process accumulated screenshots
-async function processAccumulatedScreenshots(screenshots) {
+async function processAccumulatedScreenshots(screenshots, model = 'gemini-1.5-flash') {
   try {
-    console.log('Processing accumulated screenshots:', screenshots.length);
+    console.log('Processing accumulated screenshots:', screenshots.length, 'Model:', model);
 
-    // Send to backend
+    // Send to backend with model parameter
     const response = await makeRequest(`${BACKEND_URL}/api/screenshot`, {
       method: 'POST',
-      body: { images: screenshots }
+      body: { images: screenshots, model: model }
     });
 
     console.log('Backend response received:', response);
@@ -268,8 +269,8 @@ app.whenReady().then(() => {
   }
 
   // IPC Handlers for chat functionality
-  ipcMain.handle('chat:send-message', async (event, text, imageData) => {
-    await sendChatMessage(text, imageData);
+  ipcMain.handle('chat:send-message', async (event, text, imageData, model) => {
+    await sendChatMessage(text, imageData, model);
     return true;
   });
 
@@ -284,8 +285,8 @@ app.whenReady().then(() => {
   });
 
   // IPC Handler for processing accumulated screenshots
-  ipcMain.handle('screenshot:process-accumulated', async (event, screenshots) => {
-    await processAccumulatedScreenshots(screenshots);
+  ipcMain.handle('screenshot:process-accumulated', async (event, screenshots, model) => {
+    await processAccumulatedScreenshots(screenshots, model);
     return true;
   });
 });

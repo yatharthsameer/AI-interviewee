@@ -19,8 +19,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         });
     },
 
-    // Chat functionality
-    sendChatMessage: (text, imageData) => ipcRenderer.invoke('chat:send-message', text, imageData),
+    // Chat functionality with model parameter
+    sendChatMessage: (text, imageData, model) => ipcRenderer.invoke('chat:send-message', text, imageData, model),
 
     onChatResponse: (callback) => {
         ipcRenderer.on('chat-response', (event, response) => {
@@ -48,7 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         });
     },
 
-    processAccumulatedScreenshots: (screenshots) => ipcRenderer.invoke('screenshot:process-accumulated', screenshots),
+    // Process accumulated screenshots with model parameter
+    processAccumulatedScreenshots: (screenshots, model) => ipcRenderer.invoke('screenshot:process-accumulated', screenshots, model),
 
     onCheckCurrentMode: (callback) => {
         ipcRenderer.on('check-current-mode', () => {
