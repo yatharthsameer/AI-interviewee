@@ -25,6 +25,100 @@
       box-sizing: border-box;
     }
 
+    /* Top bar styling */
+    #topBar {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      height: 24px;
+      padding: 0 8px;
+      background: rgba(20, 20, 20, 0.8);
+      border-bottom: 1px solid #555;
+      border-radius: 6px 6px 0 0;
+      flex-shrink: 0;
+      margin-bottom: 8px;
+    }
+
+    #infoIcon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(60, 60, 60, 0.8);
+      color: #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font: 11px monospace;
+      font-weight: bold;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s;
+    }
+
+    #infoIcon:hover {
+      background: rgba(70, 130, 180, 0.8);
+      color: #fff;
+    }
+
+    /* Tooltip styling */
+    #shortcutsTooltip {
+      position: absolute;
+      top: 22px;
+      right: 0;
+      background: rgba(20, 20, 20, 0.95);
+      border: 1px solid #555;
+      border-radius: 6px;
+      padding: 12px;
+      min-width: 280px;
+      font: 11px monospace;
+      color: #eee;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    #shortcutsTooltip.show {
+      display: block;
+    }
+
+    .shortcut-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(85, 85, 85, 0.3);
+    }
+
+    .shortcut-item:last-child {
+      border-bottom: none;
+    }
+
+    .shortcut-key {
+      color: #70a1d4;
+      font-weight: bold;
+      background: rgba(70, 130, 180, 0.1);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+
+    .shortcut-desc {
+      color: #ccc;
+      flex: 1;
+      margin-left: 8px;
+      font-size: 10px;
+    }
+
+    .tooltip-title {
+      color: #fff;
+      font-weight: bold;
+      margin-bottom: 8px;
+      text-align: center;
+      font-size: 12px;
+      border-bottom: 1px solid #555;
+      padding-bottom: 6px;
+    }
+
     /* Pages */
     .page {
       flex: 1;
@@ -517,11 +611,134 @@
       overflow-wrap: break-word !important;
       max-width: 100% !important;
     }
+
+    /* Top bar styling */
+    #topBar {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      height: 24px;
+      padding: 0 8px;
+      background: rgba(20, 20, 20, 0.8);
+      border-bottom: 1px solid #555;
+      border-radius: 6px 6px 0 0;
+      flex-shrink: 0;
+      margin-bottom: 8px;
+    }
+
+    #infoIcon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(60, 60, 60, 0.8);
+      color: #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font: 11px monospace;
+      font-weight: bold;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s;
+    }
+
+    #infoIcon:hover {
+      background: rgba(70, 130, 180, 0.8);
+      color: #fff;
+    }
+
+    /* Tooltip styling */
+    #shortcutsTooltip {
+      position: absolute;
+      top: 22px;
+      right: 0;
+      background: rgba(20, 20, 20, 0.95);
+      border: 1px solid #555;
+      border-radius: 6px;
+      padding: 12px;
+      min-width: 280px;
+      font: 11px monospace;
+      color: #eee;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    #shortcutsTooltip.show {
+      display: block;
+    }
+
+    .shortcut-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(85, 85, 85, 0.3);
+    }
+
+    .shortcut-item:last-child {
+      border-bottom: none;
+    }
+
+    .shortcut-key {
+      color: #70a1d4;
+      font-weight: bold;
+      background: rgba(70, 130, 180, 0.1);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+
+    .shortcut-desc {
+      color: #ccc;
+      flex: 1;
+      margin-left: 8px;
+      font-size: 10px;
+    }
+
+    .tooltip-title {
+      color: #fff;
+      font-weight: bold;
+      margin-bottom: 8px;
+      text-align: center;
+      font-size: 12px;
+      border-bottom: 1px solid #555;
+      padding-bottom: 6px;
+    }
   </style>
 </head>
 
 <body>
   <div id="container">
+    <!-- Top bar -->
+    <div id="topBar">
+      <div id="infoIcon">
+        i
+        <div id="shortcutsTooltip">
+          <div class="tooltip-title">Keyboard Shortcuts</div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">Cmd+Shift+1</span>
+            <span class="shortcut-desc">Take screenshot</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">Cmd+Enter</span>
+            <span class="shortcut-desc">Process accumulated screenshots</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">Cmd+↑↓←→</span>
+            <span class="shortcut-desc">Move window</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">Cmd+6</span>
+            <span class="shortcut-desc">Hide/Show window</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">Enter / Cmd+Enter</span>
+            <span class="shortcut-desc">Send chat message</span>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="status">Interview Helper</div>
 
     <!-- Notes Page -->
@@ -726,6 +943,18 @@
                               showScreenshotPreviewArea(); // Show preview area again on error
                             }
                           }
+
+                        // Top bar tooltip functionality
+                        const infoIcon = document.getElementById('infoIcon');
+                        const shortcutsTooltip = document.getElementById('shortcutsTooltip');
+
+                        infoIcon.addEventListener('mouseenter', () => {
+                          shortcutsTooltip.classList.add('show');
+                        });
+
+                        infoIcon.addEventListener('mouseleave', () => {
+                          shortcutsTooltip.classList.remove('show');
+                        });
 
     // Page management
     const notesPage = document.getElementById('notesPage');
@@ -960,6 +1189,24 @@
           processAccumulatedScreenshots();
         } else {
           console.log('Not processing - either wrong page or no screenshots');
+        }
+      });
+
+      // Handle global Cmd+Enter shortcut - decide action based on current mode
+      window.electronAPI.onHandleCmdEnter(() => {
+        console.log('Global Cmd+Enter received, currentPage:', currentPage);
+
+        if (currentPage === 'chat') {
+          // In chat mode - check if input is focused and send message
+          const chatInput = document.getElementById('chatInput');
+          if (document.activeElement === chatInput || chatInput.value.trim() || currentImageData) {
+            console.log('Sending chat message via global Cmd+Enter');
+            sendMessage();
+          }
+        } else if (currentPage === 'notes' && accumulatedScreenshots.length > 0) {
+          // In interview mode with screenshots - process them
+          console.log('Processing accumulated screenshots via global Cmd+Enter');
+          processAccumulatedScreenshots();
         }
       });
 

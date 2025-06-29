@@ -240,12 +240,12 @@ app.whenReady().then(() => {
     win.webContents.send('check-current-mode');
   });
 
-  // Global shortcut for processing accumulated screenshots: cmd + enter
+  // Global shortcut for Cmd+Enter: cmd + enter
   globalShortcut.register('CommandOrControl+Enter', async () => {
-    console.log('Process screenshots shortcut pressed (global)');
+    console.log('Cmd+Enter shortcut pressed (global)');
 
-    // Tell renderer to process accumulated screenshots
-    win.webContents.send('process-accumulated-screenshots');
+    // Ask renderer to handle based on current mode
+    win.webContents.send('handle-cmd-enter');
   });
 
   // Create tray with error handling for icon

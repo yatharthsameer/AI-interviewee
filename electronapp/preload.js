@@ -65,6 +65,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         });
     },
 
+    // Handle global Cmd+Enter shortcut
+    onHandleCmdEnter: (callback) => {
+        ipcRenderer.on('handle-cmd-enter', () => {
+            callback();
+        });
+    },
+
     // Remove listeners when needed
     removeAllListeners: (channel) => {
         ipcRenderer.removeAllListeners(channel);
