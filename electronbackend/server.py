@@ -134,10 +134,8 @@ def api_chat():
             content = []
 
             if user_text and image_data:
-                # Both text and image
-                prompt = f"Analyze this image and text together and answer what is asked for in short. Text: {user_text}"
-                content.append(prompt)
-
+                # Both text and image: behave like ChatGPT multimodal
+                content.append(user_text)
                 # Process image
                 image_data_clean = (
                     image_data.split(",")[1]
@@ -146,26 +144,19 @@ def api_chat():
                 )
                 image_bytes = base64.b64decode(image_data_clean)
                 image = Image.open(BytesIO(image_bytes))
-
                 # Resize if needed (same as screenshot logic)
                 max_dimension = 1024
                 if max(image.size) > max_dimension:
                     ratio = max_dimension / max(image.size)
                     new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
                     image = image.resize(new_size, Image.Resampling.LANCZOS)
-
                 if image.mode != "RGB":
                     image = image.convert("RGB")
-
                 content.append(image)
                 log.info(f"Prepared multimodal content: text + image ({image.size})")
 
             elif image_data:
-                # Image only
-                prompt = "Analyze this image and answer what is asked for in short"
-                content.append(prompt)
-
-                # Process image (same logic as above)
+                # Image only: behave like ChatGPT multimodal
                 image_data_clean = (
                     image_data.split(",")[1]
                     if image_data.startswith("data:image")
@@ -173,23 +164,19 @@ def api_chat():
                 )
                 image_bytes = base64.b64decode(image_data_clean)
                 image = Image.open(BytesIO(image_bytes))
-
                 max_dimension = 1024
                 if max(image.size) > max_dimension:
                     ratio = max_dimension / max(image.size)
                     new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
                     image = image.resize(new_size, Image.Resampling.LANCZOS)
-
                 if image.mode != "RGB":
                     image = image.convert("RGB")
-
                 content.append(image)
                 log.info(f"Prepared image-only content: image ({image.size})")
 
             else:
-                # Text only
-                prompt = f"Analyze this text and answer what is asked for in short: {user_text}"
-                content.append(prompt)
+                # Text only: behave like ChatGPT
+                content.append(user_text)
                 log.info("Prepared text-only content")
 
             # Send to Gemini

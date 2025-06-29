@@ -16,7 +16,9 @@
     #container {
       display: flex;
       flex-direction: column;
-      height: 100%;
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden;
     }
 
     /* Pages */
@@ -24,6 +26,8 @@
       flex: 1;
       display: none;
       flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .page.active {
@@ -53,6 +57,8 @@
       flex-direction: column;
       padding: 12px;
       min-height: 0;
+      overflow: hidden;
+      height: 0; /* Force flex child to respect parent constraints */
     }
 
     #chatMessages {
@@ -62,6 +68,8 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      min-height: 0;
+      height: 0; /* Force flex child to respect parent constraints */
     }
 
     #chatInputContainer {
@@ -70,6 +78,7 @@
       gap: 8px;
       padding: 8px 0;
       border-top: 1px solid #555;
+      flex-shrink: 0;
     }
 
     /* Image preview in chat */
@@ -559,7 +568,7 @@
 
       // Chat response handlers
       window.electronAPI.onChatResponse((response) => {
-        addMessage(response, 'assistant');
+        addMessage(response, 'ai');
         sendBtn.disabled = false;
         sendBtn.textContent = 'Send';
       });
