@@ -174,6 +174,16 @@ app.whenReady().then(() => {
   // *** The critical line ***
   win.setContentProtection(true); // makes the window invisible to capture
 
+  // *** Enhanced always-on-top behavior for full-screen apps ***
+  // Elevate to the highest practical layer (screen-saver level)
+  win.setAlwaysOnTop(true, 'screen-saver');
+
+  // Make the window visible in ALL Spaces, including full-screen ones
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  // Optional: prevent this window from being full-screened accidentally
+  win.setFullScreenable(false);
+
   win.loadFile('index.html');
   win.once('ready-to-show', () => win.show());
 
