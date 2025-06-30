@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Chat functionality with model parameter
-    sendChatMessage: (text, imageData, model) => ipcRenderer.invoke('chat:send-message', text, imageData, model),
+    sendChatMessage: (text, imageData, model, chatHistory) => ipcRenderer.invoke('chat:send-message', text, imageData, model, chatHistory),
 
     onChatResponse: (callback) => {
         ipcRenderer.on('chat-response', (event, response) => {
@@ -79,7 +79,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Settings functionality
-    setWindowOpacity: (opacity) => ipcRenderer.invoke('window:set-opacity', opacity)
+    setWindowOpacity: (opacity) => ipcRenderer.invoke('window:set-opacity', opacity),
+
+    // Authentication functionality
+    login: (username, password) => ipcRenderer.invoke('auth:login', username, password),
+    register: (username, email, password) => ipcRenderer.invoke('auth:register', username, email, password),
+    logout: () => ipcRenderer.invoke('auth:logout'),
+    verifyToken: (token) => ipcRenderer.invoke('auth:verify-token', token),
+    getCurrentUser: () => ipcRenderer.invoke('auth:get-current-user'),
+
+    // App navigation
+    openMainApp: () => ipcRenderer.invoke('app:open-main'),
+    openAuthPage: () => ipcRenderer.invoke('app:open-auth'),
+
+    // Token storage events
+    onTokenStored: (callback) => {
+        ipcRenderer.on('auth:token-stored', (event, token) => {
+            callback(token);
+        });
+    },
+
+    onTokenRemoved: (callback) => {
+        ipcRenderer.on('auth:token-removed', () => {
+            callback();
+        });
+    }
 });
 
 // nothing fancy yet – isolated world so the renderer is sandboxed 

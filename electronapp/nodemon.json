@@ -1,0 +1,19 @@
+{
+    "watch": [
+        "main.js",
+        "preload.js",
+        "index.html",
+        "auth.html"
+    ],
+    "ext": "js,html,css,json",
+    "ignore": [
+        "node_modules/",
+        "package-lock.json",
+        ".git/"
+    ],
+    "exec": "electron .",
+    "env": {
+        "NODE_ENV": "development"
+    },
+    "delay": "1000"
+}

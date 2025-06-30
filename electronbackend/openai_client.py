@@ -72,6 +72,54 @@ class OpenAIClient:
             log.error(f"OpenAI chat completion failed: {e}")
             raise
 
+    def chat_with_history(self, messages, model="gpt-4o"):
+        """Chat with conversation history for proper context."""
+        try:
+            log.info(
+                f"Sending chat with history to OpenAI model: {model}, message count: {len(messages)}"
+            )
+
+            # Process messages to ensure images are properly formatted
+            processed_messages = []
+            for message in messages:
+                processed_message = {"role": message["role"]}
+
+                if isinstance(message["content"], list):
+                    # Multi-modal message with text and images
+                    processed_content = []
+                    for content_item in message["content"]:
+                        if content_item["type"] == "text":
+                            processed_content.append(content_item)
+                        elif content_item["type"] == "image_url":
+                            # Prepare image for OpenAI
+                            image_url = content_item["image_url"]["url"]
+                            if image_url.startswith("data:image/png;base64,"):
+                                # Process the image to ensure it meets OpenAI requirements
+                                image_base64 = image_url.split(",")[1]
+                                processed_image_url = self._prepare_image_for_openai(
+                                    image_base64
+                                )
+                                processed_content.append(
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": processed_image_url},
+                                    }
+                                )
+                            else:
+                                processed_content.append(content_item)
+                    processed_message["content"] = processed_content
+                else:
+                    # Text-only message
+                    processed_message["content"] = message["content"]
+
+                processed_messages.append(processed_message)
+
+            return self.chat_completion(model, processed_messages)
+
+        except Exception as e:
+            log.error(f"OpenAI chat with history failed: {e}")
+            raise
+
     def analyze_text(self, text, model="gpt-4o"):
         """Analyze text with OpenAI."""
         try:
