@@ -186,7 +186,10 @@ app.whenReady().then(() => {
   win.setFullScreenable(false);
 
   win.loadFile('index.html');
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.setOpacity(1.0); // Set initial opacity to 100%
+    win.show();
+  });
 
   // Global shortcuts for window movement and hiding
   const moveStep = 50; // pixels to move per keypress
@@ -288,6 +291,16 @@ app.whenReady().then(() => {
   ipcMain.handle('screenshot:process-accumulated', async (event, screenshots, model) => {
     await processAccumulatedScreenshots(screenshots, model);
     return true;
+  });
+
+  // IPC Handler for setting window opacity
+  ipcMain.handle('window:set-opacity', async (event, opacity) => {
+    if (win && opacity >= 0.2 && opacity <= 1.0) {
+      win.setOpacity(opacity);
+      // console.log('Window opacity set to:', opacity);
+      return true;
+    }
+    return false;
   });
 });
 

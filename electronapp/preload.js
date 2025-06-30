@@ -76,7 +76,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Remove listeners when needed
     removeAllListeners: (channel) => {
         ipcRenderer.removeAllListeners(channel);
-    }
+    },
+
+    // Settings functionality
+    setWindowOpacity: (opacity) => ipcRenderer.invoke('window:set-opacity', opacity)
 });
 
 // nothing fancy yet – isolated world so the renderer is sandboxed 
