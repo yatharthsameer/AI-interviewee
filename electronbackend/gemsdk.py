@@ -272,3 +272,122 @@ class GeminiClient:
 
             logger.error(f"Full traceback: {traceback.format_exc()}")
             raise Exception(f"Failed to analyze image: {str(e)}")
+
+    def analyze_multiple_images(self, images_base64: list, prompt: str) -> str:
+        """
+        Analyze multiple images with the given text prompt.
+
+        Args:
+            images_base64: List of base64 encoded image data
+            prompt: Text prompt to analyze the images
+
+        Returns:
+            String response from Gemini
+        """
+        try:
+            logger.info(f"Starting analysis of {len(images_base64)} images...")
+
+            # Prepare content array starting with prompt
+            content = [prompt]
+
+            # Process each image
+            for i, image_data in enumerate(images_base64):
+                logger.info(f"Processing image {i+1}/{len(images_base64)}...")
+
+                # Remove data URL prefix if present
+                if image_data.startswith("data:image"):
+                    image_data = image_data.split(",")[1]
+
+                # Decode base64 image
+                image_bytes = base64.b64decode(image_data)
+                logger.info(f"Image {i+1} decoded, size: {len(image_bytes)} bytes")
+
+                # Create PIL Image object
+                image = Image.open(BytesIO(image_bytes))
+                logger.info(f"Image {i+1} created, size: {image.size}")
+
+                # Resize if needed for better performance
+                image = self._resize_image_if_needed(image)
+
+                # Convert to RGB if needed
+                if image.mode != "RGB":
+                    logger.info(f"Converting image {i+1} from {image.mode} to RGB")
+                    image = image.convert("RGB")
+
+                content.append(image)
+
+            logger.info(f"Sending {len(images_base64)} images to Gemini API...")
+
+            try:
+                # Try with a direct call first
+                logger.info("Attempting direct Gemini API call with multiple images...")
+                response = self._model.generate_content(content)
+                logger.info("Received response from Gemini API")
+
+                if response.text:
+                    logger.info(
+                        f"Successfully received response from Gemini, length: {len(response.text)}"
+                    )
+                    logger.info(f"Response preview: {response.text[:100]}...")
+                    return response.text
+                else:
+                    logger.error("Empty response from Gemini")
+                    logger.info("Response object details:", response)
+                    return (
+                        "Sorry, I couldn't analyze the images. The response was empty."
+                    )
+
+            except Exception as direct_error:
+                logger.error(f"Direct API call failed: {direct_error}")
+                logger.error(
+                    f"Direct call exception type: {type(direct_error).__name__}"
+                )
+
+                # If direct call fails, try with threading and timeout
+                logger.info("Trying with timeout wrapper...")
+
+                result = [None]
+                exception = [None]
+
+                def gemini_call():
+                    try:
+                        result[0] = self._model.generate_content(content)
+                    except Exception as e:
+                        exception[0] = e
+
+                thread = threading.Thread(target=gemini_call)
+                thread.daemon = True
+                thread.start()
+
+                # Wait for 45 seconds (longer timeout for multiple images)
+                thread.join(timeout=45)
+
+                if thread.is_alive():
+                    logger.error("Gemini API call timed out after 45 seconds")
+                    raise Exception(
+                        "Request timed out - Gemini API took too long to respond"
+                    )
+
+                if exception[0]:
+                    raise exception[0]
+
+                response = result[0]
+                logger.info("Received response from Gemini API (via timeout wrapper)")
+
+                if response.text:
+                    logger.info(
+                        f"Successfully received response from Gemini, length: {len(response.text)}"
+                    )
+                    logger.info(f"Response preview: {response.text[:100]}...")
+                    return response.text
+                else:
+                    logger.error("Empty response from Gemini")
+                    return "Sorry, I couldn't analyze the images. Please try again."
+
+        except Exception as e:
+            logger.error(f"Error analyzing multiple images: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            raise Exception(f"Failed to analyze images: {str(e)}")
