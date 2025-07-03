@@ -48,8 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         });
     },
 
-    // Process accumulated screenshots with model parameter
-    processAccumulatedScreenshots: (screenshots, model) => ipcRenderer.invoke('screenshot:process-accumulated', screenshots, model),
+    // Process accumulated screenshots with model and custom prompt parameters
+    processAccumulatedScreenshots: (screenshots, model, customPrompt) => ipcRenderer.invoke('screenshot:process-accumulated', screenshots, model, customPrompt),
 
     onCheckCurrentMode: (callback) => {
         ipcRenderer.on('check-current-mode', () => {

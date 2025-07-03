@@ -12,6 +12,7 @@ import google.generativeai as genai
 from PIL import Image
 from io import BytesIO
 from auth import auth_manager, token_required  # Import authentication
+from token_tracker import token_tracker  # Import token tracking
 
 load_dotenv()
 
@@ -525,13 +526,12 @@ def api_verify_token():
 
 @APP.get("/api/auth/me")
 @token_required
-def api_get_current_user():
+def api_get_current_user(current_user):
     """Get current user info (requires authentication)"""
     try:
         log.info("=== Get Current User API called ===")
-        user = request.current_user
-        log.info(f"Returning user info for: {user['username']}")
-        return jsonify({"success": True, "user": user}), 200
+        log.info(f"Returning user info for: {current_user['username']}")
+        return jsonify({"success": True, "user": current_user}), 200
 
     except Exception as e:
         log.error(f"Get current user API error: {e}")
@@ -541,15 +541,27 @@ def api_get_current_user():
 # Protected endpoints - require authentication
 @APP.post("/api/chat_protected")
 @token_required
-def api_chat_protected():
-    """Protected chat endpoint that calls the main chat API with conversation history."""
+def api_chat_protected(current_user):
+    """Protected chat endpoint with token tracking and usage limits."""
     try:
-        log.info("=== Protected Chat API called ===")
+        log.info(
+            f"=== Protected Chat API called by user {current_user['id']} ({current_user['username']}) ==="
+        )
 
-        # Get the request data and forward it to the main chat API
+        # Check user limits before processing
+        limits = token_tracker.check_user_limits(current_user["id"])
+        if not limits["within_limits"]:
+            log.warning(f"User {current_user['id']} exceeded limits: {limits}")
+            return (
+                jsonify(
+                    error="Usage limit exceeded. Please contact administrator.",
+                    limits=limits,
+                ),
+                429,
+            )
+
+        # Get the request data
         request_data = request.get_json(force=True, silent=True) or {}
-
-        # Log the request details including chat history
         user_text = request_data.get("text", "").strip()
         image_data = request_data.get("image")
         model_name = request_data.get("model", "gemini-1.5-flash")
@@ -559,9 +571,170 @@ def api_chat_protected():
             f"Protected chat - Text: {'Yes' if user_text else 'No'}, Image: {'Yes' if image_data else 'No'}, Model: {model_name}, History: {len(chat_history)} messages"
         )
 
-        # Forward to main chat API
-        with APP.test_request_context("/api/chat", method="POST", json=request_data):
-            return api_chat()
+        if not user_text and not image_data:
+            return jsonify(error="No text or image provided"), 400
+
+        # Process the request with token tracking
+        ai_client, actual_model = get_ai_client_and_model(model_name)
+
+        if model_name.startswith("gpt-"):
+            # OpenAI handling with token tracking
+            messages = []
+
+            # Add chat history
+            for msg in chat_history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                image = msg.get("image")
+
+                if image:
+                    messages.append(
+                        {
+                            "role": role,
+                            "content": [
+                                {"type": "text", "text": content},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{image}"
+                                    },
+                                },
+                            ],
+                        }
+                    )
+                else:
+                    messages.append({"role": role, "content": content})
+
+            # Add current message
+            if user_text and image_data:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_text},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_data}"
+                                },
+                            },
+                        ],
+                    }
+                )
+            elif image_data:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Please analyze this image."},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_data}"
+                                },
+                            },
+                        ],
+                    }
+                )
+            else:
+                messages.append({"role": "user", "content": user_text})
+
+            # Make OpenAI call
+            response_obj = ai_client.client.chat.completions.create(
+                model=actual_model, messages=messages, max_tokens=4000, temperature=0.7
+            )
+
+            response_text = response_obj.choices[0].message.content
+
+            # Log token usage for OpenAI
+            token_tracker.log_openai_usage(
+                user_id=current_user["id"],
+                model_name=actual_model,
+                endpoint="/api/chat_protected",
+                response=response_obj,
+                request_type="chat",
+            )
+
+        else:
+            # Gemini handling with token tracking
+            model = genai.GenerativeModel(actual_model)
+
+            # Prepare conversation context and content (similar to api_chat)
+            conversation_parts = []
+            for msg in chat_history:
+                role = "User" if msg.get("role") == "user" else "Assistant"
+                content = msg.get("content", "")
+                conversation_parts.append(f"{role}: {content}")
+
+            current_content = []
+            if conversation_parts:
+                context = "\n".join(conversation_parts[-10:])
+                current_content.append(
+                    f"Previous conversation:\n{context}\n\nUser's current message: "
+                )
+            else:
+                current_content.append("")
+
+            if user_text and image_data:
+                current_content[0] += user_text
+                image_data_clean = (
+                    image_data.split(",")[1]
+                    if image_data.startswith("data:image")
+                    else image_data
+                )
+                image_bytes = base64.b64decode(image_data_clean)
+                image = Image.open(BytesIO(image_bytes))
+                max_dimension = 1024
+                if max(image.size) > max_dimension:
+                    ratio = max_dimension / max(image.size)
+                    new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                    image = image.resize(new_size, Image.Resampling.LANCZOS)
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+                current_content.append(image)
+
+            elif image_data:
+                current_content[0] += "Please analyze this image."
+                image_data_clean = (
+                    image_data.split(",")[1]
+                    if image_data.startswith("data:image")
+                    else image_data
+                )
+                image_bytes = base64.b64decode(image_data_clean)
+                image = Image.open(BytesIO(image_bytes))
+                max_dimension = 1024
+                if max(image.size) > max_dimension:
+                    ratio = max_dimension / max(image.size)
+                    new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                    image = image.resize(new_size, Image.Resampling.LANCZOS)
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+                current_content.append(image)
+            else:
+                current_content[0] += user_text
+
+            response = model.generate_content(current_content)
+            response_text = response.text
+
+            # Log token usage for Gemini (estimated)
+            input_text = user_text + " ".join(
+                [msg.get("content", "") for msg in chat_history[-5:]]
+            )
+            token_tracker.log_gemini_usage(
+                user_id=current_user["id"],
+                model_name=actual_model,
+                endpoint="/api/chat_protected",
+                input_text=input_text,
+                output_text=response_text,
+                image_data=image_data,
+                request_type="chat",
+            )
+
+        if response_text:
+            log.info(f"Protected chat successful for user {current_user['id']}")
+            return jsonify(response=response_text, success=True)
+        else:
+            return jsonify(error="Empty response from AI", success=False)
 
     except Exception as e:
         log.error(f"Protected Chat API error: {e}")
@@ -570,14 +743,298 @@ def api_chat_protected():
 
 @APP.post("/api/screenshot_protected")
 @token_required
-def api_screenshot_protected():
-    """Protected version of screenshot endpoint"""
-    # Use the same logic as api_screenshot but with authentication
-    user = request.current_user
-    log.info(f"Protected screenshot request from user: {user['username']}")
+def api_screenshot_protected(current_user):
+    """Protected screenshot endpoint with token tracking"""
+    try:
+        log.info(
+            f"=== Protected Screenshot API called by user {current_user['id']} ({current_user['username']}) ==="
+        )
 
-    # Call the same function but log the user
-    return api_screenshot()
+        # Check user limits before processing
+        limits = token_tracker.check_user_limits(current_user["id"])
+        if not limits["within_limits"]:
+            log.warning(f"User {current_user['id']} exceeded limits: {limits}")
+            return (
+                jsonify(
+                    error="Usage limit exceeded. Please contact administrator.",
+                    limits=limits,
+                ),
+                429,
+            )
+
+        j = request.get_json(force=True, silent=True) or {}
+        image_data = j.get("image")
+        images_data = j.get("images", [])
+        model_name = j.get("model", "gemini-1.5-flash")
+        custom_prompt = j.get("customPrompt")
+
+        # Support both single image and multiple images
+        if image_data and not images_data:
+            images_data = [image_data]
+        elif not images_data:
+            return jsonify(error="No image data provided"), 400
+
+        log.info(
+            f"Received {len(images_data)} screenshot(s) for analysis with model: {model_name}"
+        )
+
+        # Use custom prompt if provided, otherwise use default
+        if custom_prompt and custom_prompt.strip():
+            prompt = custom_prompt.strip()
+            log.info(f"Using custom prompt: {prompt[:100]}...")
+        else:
+            prompt = (
+                "Solve this question, and give me the code for the same."
+                if len(images_data) == 1
+                else f"Analyze these {len(images_data)} screenshots which show different parts of the same coding question. Solve the complete question and provide the code solution."
+            )
+            log.info(f"Using default prompt: {prompt}")
+
+        # Process the request with token tracking
+        ai_client, actual_model = get_ai_client_and_model(model_name)
+
+        if model_name.startswith("gpt-"):
+            # OpenAI handling
+            response_obj = ai_client.client.chat.completions.create(
+                model=actual_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": prompt}]
+                        + [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{img}"},
+                            }
+                            for img in images_data
+                        ],
+                    }
+                ],
+                max_tokens=4000,
+                temperature=0.7,
+            )
+
+            response = response_obj.choices[0].message.content
+
+            # Log token usage for OpenAI
+            token_tracker.log_openai_usage(
+                user_id=current_user["id"],
+                model_name=actual_model,
+                endpoint="/api/screenshot_protected",
+                response=response_obj,
+                request_type="screenshot",
+            )
+        else:
+            # Gemini handling
+            response = GEMINI_CLIENT.analyze_multiple_images(
+                images_base64=images_data, prompt=prompt
+            )
+
+            # Log token usage for Gemini (estimated)
+            token_tracker.log_gemini_usage(
+                user_id=current_user["id"],
+                model_name=actual_model,
+                endpoint="/api/screenshot_protected",
+                input_text=prompt,
+                output_text=response,
+                image_data=",".join(images_data[:3]),  # Limit for estimation
+                request_type="screenshot",
+            )
+
+        log.info(f"Protected screenshot successful for user {current_user['id']}")
+        return jsonify(solution=response, success=True)
+
+    except Exception as e:
+        log.error(f"Protected Screenshot API error: {e}")
+        return jsonify(error=str(e)), 500
+
+
+# ────────── Admin Dashboard Endpoints ───────────────────
+@APP.get("/api/admin/users")
+@token_required
+def api_admin_get_users(current_user):
+    """Get all users with their token usage summary (admin only)"""
+    try:
+        # For now, allow any authenticated user to view this
+        # In production, you'd want to check for admin role
+        log.info(f"Admin users list requested by user {current_user['id']}")
+
+        days = request.args.get("days", 30, type=int)
+        users_usage = auth_manager.get_all_users_usage_summary(days)
+
+        return (
+            jsonify({"success": True, "users": users_usage, "period_days": days}),
+            200,
+        )
+
+    except Exception as e:
+        log.error(f"Admin users API error: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@APP.get("/api/admin/user/<int:user_id>/usage")
+@token_required
+def api_admin_get_user_usage(current_user, user_id):
+    """Get detailed usage for a specific user"""
+    try:
+        log.info(f"User {user_id} usage requested by admin {current_user['id']}")
+
+        days = request.args.get("days", 30, type=int)
+        usage_data = auth_manager.get_user_token_usage(user_id, days)
+
+        # Get user limits
+        limits = token_tracker.check_user_limits(user_id)
+
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "user_id": user_id,
+                    "usage": usage_data,
+                    "limits": limits,
+                    "period_days": days,
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        log.error(f"Admin user usage API error: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@APP.post("/api/admin/user/<int:user_id>/block")
+@token_required
+def api_admin_block_user(current_user, user_id):
+    """Block a user from using the service"""
+    try:
+        log.info(f"User {user_id} block requested by admin {current_user['id']}")
+
+        success = auth_manager.block_user(user_id)
+
+        if success:
+            log.info(f"User {user_id} blocked successfully")
+            return (
+                jsonify({"success": True, "message": "User blocked successfully"}),
+                200,
+            )
+        else:
+            return jsonify({"success": False, "error": "Failed to block user"}), 500
+
+    except Exception as e:
+        log.error(f"Admin block user API error: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@APP.post("/api/admin/user/<int:user_id>/unblock")
+@token_required
+def api_admin_unblock_user(current_user, user_id):
+    """Unblock a user"""
+    try:
+        log.info(f"User {user_id} unblock requested by admin {current_user['id']}")
+
+        success = auth_manager.unblock_user(user_id)
+
+        if success:
+            log.info(f"User {user_id} unblocked successfully")
+            return (
+                jsonify({"success": True, "message": "User unblocked successfully"}),
+                200,
+            )
+        else:
+            return jsonify({"success": False, "error": "Failed to unblock user"}), 500
+
+    except Exception as e:
+        log.error(f"Admin unblock user API error: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@APP.get("/api/admin/stats")
+@token_required
+def api_admin_get_stats(current_user):
+    """Get overall system statistics"""
+    try:
+        log.info(f"Admin stats requested by user {current_user['id']}")
+
+        # Get basic stats from database
+        import sqlite3
+
+        conn = sqlite3.connect("users.db")
+        cursor = conn.cursor()
+
+        # Total users
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        total_users = cursor.fetchone()[0]
+
+        # Blocked users
+        cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE is_active = 1 AND is_blocked = 1"
+        )
+        blocked_users = cursor.fetchone()[0]
+
+        # Total token usage (last 30 days)
+        cursor.execute(
+            """
+            SELECT 
+                COUNT(*) as total_requests,
+                SUM(total_tokens) as total_tokens,
+                SUM(cost_estimate) as total_cost
+            FROM token_usage 
+            WHERE timestamp >= datetime('now', '-30 days')
+        """
+        )
+        usage_stats = cursor.fetchone()
+
+        # Usage by model (last 30 days)
+        cursor.execute(
+            """
+            SELECT 
+                model_name,
+                COUNT(*) as requests,
+                SUM(total_tokens) as tokens,
+                SUM(cost_estimate) as cost
+            FROM token_usage 
+            WHERE timestamp >= datetime('now', '-30 days')
+            GROUP BY model_name
+            ORDER BY tokens DESC
+        """
+        )
+        model_stats = cursor.fetchall()
+
+        conn.close()
+
+        model_breakdown = []
+        for row in model_stats:
+            model_breakdown.append(
+                {
+                    "model_name": row[0],
+                    "requests": row[1],
+                    "tokens": row[2],
+                    "cost": row[3],
+                }
+            )
+
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "stats": {
+                        "total_users": total_users,
+                        "blocked_users": blocked_users,
+                        "active_users": total_users - blocked_users,
+                        "total_requests_30d": usage_stats[0] or 0,
+                        "total_tokens_30d": usage_stats[1] or 0,
+                        "total_cost_30d": usage_stats[2] or 0.0,
+                        "model_breakdown": model_breakdown,
+                    },
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        log.error(f"Admin stats API error: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
 # ────────── run ───────────────────

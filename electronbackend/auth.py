@@ -43,10 +43,54 @@ class AuthManager:
                     password_hash TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP,
-                    is_active BOOLEAN DEFAULT 1
+                    is_active BOOLEAN DEFAULT 1,
+                    is_blocked BOOLEAN DEFAULT 0
                 )
             """
             )
+
+            # Create token_usage table for tracking API usage
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS token_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    model_name TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    total_tokens INTEGER NOT NULL,
+                    cost_estimate REAL DEFAULT 0.0,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    request_type TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            """
+            )
+
+            # Create index for faster queries
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_token_usage_user_time 
+                ON token_usage (user_id, timestamp)
+            """
+            )
+
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_token_usage_model_time 
+                ON token_usage (model_name, timestamp)
+            """
+            )
+
+            # Add is_blocked column to existing users table if it doesn't exist
+            try:
+                cursor.execute(
+                    "ALTER TABLE users ADD COLUMN is_blocked BOOLEAN DEFAULT 0"
+                )
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
 
             conn.commit()
             conn.close()
@@ -205,7 +249,7 @@ class AuthManager:
 
             cursor.execute(
                 """
-                SELECT id, username, email, is_active 
+                SELECT id, username, email, is_active, is_blocked 
                 FROM users 
                 WHERE id = ? AND is_active = 1
             """,
@@ -216,18 +260,188 @@ class AuthManager:
             conn.close()
 
             if user:
-                return {
-                    "id": user[0],
-                    "username": user[1],
-                    "email": user[2],
-                    "is_active": user[3],
-                }
+                user_id, username, email, is_active, is_blocked = user
 
+                # Check if user is blocked
+                if is_blocked:
+                    return None
+
+                return {
+                    "id": user_id,
+                    "username": username,
+                    "email": email,
+                    "is_active": is_active,
+                    "is_blocked": is_blocked,
+                }
             return None
 
         except Exception as e:
             print(f"Error getting user from token: {e}")
             return None
+
+    def log_token_usage(
+        self,
+        user_id,
+        model_name,
+        endpoint,
+        input_tokens=0,
+        output_tokens=0,
+        total_tokens=0,
+        cost_estimate=0.0,
+        request_type=None,
+    ):
+        """Log token usage for a user"""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                INSERT INTO token_usage 
+                (user_id, model_name, endpoint, input_tokens, output_tokens, total_tokens, cost_estimate, request_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    user_id,
+                    model_name,
+                    endpoint,
+                    input_tokens,
+                    output_tokens,
+                    total_tokens,
+                    cost_estimate,
+                    request_type,
+                ),
+            )
+
+            conn.commit()
+            conn.close()
+            return True
+
+        except Exception as e:
+            print(f"Error logging token usage: {e}")
+            return False
+
+    def get_user_token_usage(self, user_id, days=30):
+        """Get token usage for a specific user over the last N days"""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT model_name, endpoint, SUM(total_tokens) as total_tokens, 
+                       SUM(cost_estimate) as total_cost, COUNT(*) as request_count,
+                       MIN(timestamp) as first_request, MAX(timestamp) as last_request
+                FROM token_usage 
+                WHERE user_id = ? AND timestamp >= datetime('now', '-{} days')
+                GROUP BY model_name, endpoint
+                ORDER BY total_tokens DESC
+            """.format(
+                    days
+                ),
+                (user_id,),
+            )
+
+            results = cursor.fetchall()
+            conn.close()
+
+            usage_data = []
+            for row in results:
+                usage_data.append(
+                    {
+                        "model_name": row[0],
+                        "endpoint": row[1],
+                        "total_tokens": row[2],
+                        "total_cost": row[3],
+                        "request_count": row[4],
+                        "first_request": row[5],
+                        "last_request": row[6],
+                    }
+                )
+
+            return usage_data
+
+        except Exception as e:
+            print(f"Error getting user token usage: {e}")
+            return []
+
+    def get_all_users_usage_summary(self, days=30):
+        """Get token usage summary for all users"""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT u.id, u.username, u.email, u.is_blocked,
+                       COALESCE(SUM(t.total_tokens), 0) as total_tokens,
+                       COALESCE(SUM(t.cost_estimate), 0) as total_cost,
+                       COALESCE(COUNT(t.id), 0) as request_count
+                FROM users u
+                LEFT JOIN token_usage t ON u.id = t.user_id 
+                    AND t.timestamp >= datetime('now', '-{} days')
+                WHERE u.is_active = 1
+                GROUP BY u.id, u.username, u.email, u.is_blocked
+                ORDER BY total_tokens DESC
+            """.format(
+                    days
+                )
+            )
+
+            results = cursor.fetchall()
+            conn.close()
+
+            users_usage = []
+            for row in results:
+                users_usage.append(
+                    {
+                        "user_id": row[0],
+                        "username": row[1],
+                        "email": row[2],
+                        "is_blocked": bool(row[3]),
+                        "total_tokens": row[4],
+                        "total_cost": row[5],
+                        "request_count": row[6],
+                    }
+                )
+
+            return users_usage
+
+        except Exception as e:
+            print(f"Error getting all users usage summary: {e}")
+            return []
+
+    def block_user(self, user_id):
+        """Block a user from using the service"""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute("UPDATE users SET is_blocked = 1 WHERE id = ?", (user_id,))
+
+            conn.commit()
+            conn.close()
+            return True
+
+        except Exception as e:
+            print(f"Error blocking user: {e}")
+            return False
+
+    def unblock_user(self, user_id):
+        """Unblock a user"""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute("UPDATE users SET is_blocked = 0 WHERE id = ?", (user_id,))
+
+            conn.commit()
+            conn.close()
+            return True
+
+        except Exception as e:
+            print(f"Error unblocking user: {e}")
+            return False
 
 
 # Global auth manager instance
@@ -257,8 +471,8 @@ def token_required(f):
         if not user:
             return jsonify({"error": "Token is invalid or expired"}), 401
 
-        # Add user to request context
+        # Add user to request context and pass as parameter
         request.current_user = user
-        return f(*args, **kwargs)
+        return f(user, *args, **kwargs)
 
     return decorated

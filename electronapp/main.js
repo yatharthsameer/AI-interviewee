@@ -325,9 +325,10 @@ async function takeScreenshot(forChat = false) {
 }
 
 // Process accumulated screenshots
-async function processAccumulatedScreenshots(screenshots, model = 'gemini-1.5-flash') {
+async function processAccumulatedScreenshots(screenshots, model = 'gemini-1.5-flash', customPrompt = null) {
   try {
     console.log('Processing accumulated screenshots:', screenshots.length, 'Model:', model);
+    console.log('Custom prompt:', customPrompt ? customPrompt.substring(0, 100) + '...' : 'None (using default)');
 
     // Use protected endpoint with JWT token
     const response = await makeRequest(`${BACKEND_URL}/api/screenshot_protected`, {
@@ -335,7 +336,7 @@ async function processAccumulatedScreenshots(screenshots, model = 'gemini-1.5-fl
       headers: {
         'Authorization': `Bearer ${jwtToken}`
       },
-      body: { images: screenshots, model: model }
+      body: { images: screenshots, model: model, customPrompt: customPrompt }
     });
 
     console.log('Backend response received:', response);
@@ -539,8 +540,8 @@ app.whenReady().then(async () => {
   });
 
   // IPC Handler for processing accumulated screenshots
-  ipcMain.handle('screenshot:process-accumulated', async (event, screenshots, model) => {
-    await processAccumulatedScreenshots(screenshots, model);
+  ipcMain.handle('screenshot:process-accumulated', async (event, screenshots, model, customPrompt) => {
+    await processAccumulatedScreenshots(screenshots, model, customPrompt);
     return true;
   });
 
