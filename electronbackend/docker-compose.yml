@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: ai-interview-backend
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://aiuser:${DB_PASSWORD}@db:5432/ai_interview
+      - JWT_SECRET=${JWT_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CHATGPT_API_KEY=${CHATGPT_API_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+    depends_on:
+      - db
+    volumes:
+      - ./data:/app/data
+    networks:
+      - ai-interview-network
+
+  db:
+    image: postgres:15-alpine
+    container_name: ai-interview-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=ai_interview
+      - POSTGRES_USER=aiuser
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ai-interview-network
+    ports:
+      - "5432:5432"  # Optional: expose for admin access
+
+volumes:
+  postgres_data:
+
+networks:
+  ai-interview-network:
+    driver: bridge 

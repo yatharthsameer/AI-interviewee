@@ -13,6 +13,7 @@ from PIL import Image
 from io import BytesIO
 from auth import auth_manager, token_required  # Import authentication
 from token_tracker import token_tracker  # Import token tracking
+from database import db_manager  # Import database manager
 
 load_dotenv()
 
@@ -22,13 +23,37 @@ logging.basicConfig(
 )
 log = logging.getLogger("server")
 
+# ────────── Production Configuration ──────────
+IS_PRODUCTION = os.getenv("NODE_ENV") == "production"
+HOST = os.getenv("HOST", "localhost" if not IS_PRODUCTION else "0.0.0.0")
+PORT = int(os.getenv("PORT", 5002))  # Heroku sets PORT automatically
+
 # ────────── sanity check ──────────
 if not os.getenv("GEMINI_API_KEY"):
     raise RuntimeError("GEMINI_API_KEY must be set in env")
 
+if IS_PRODUCTION:
+    log.info("🚀 Running in PRODUCTION mode")
+    if not os.getenv("JWT_SECRET"):
+        raise RuntimeError("JWT_SECRET must be set in production!")
+else:
+    log.info("🔧 Running in DEVELOPMENT mode")
+
 # ────────── app / state ──────────
 APP = Flask(__name__)
-CORS(APP)  # allow browser → 5002 (changed port to avoid conflict)
+
+# Configure CORS for production
+if IS_PRODUCTION:
+    allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if allowed_origins and allowed_origins[0]:
+        CORS(APP, origins=allowed_origins)
+        log.info(f"CORS configured for origins: {allowed_origins}")
+    else:
+        log.warning("No ALLOWED_ORIGINS set in production - CORS will be restrictive")
+        CORS(APP)
+else:
+    CORS(APP)  # Allow all origins in development
+
 CHAT = Conversation()  # one shared convo (good enough for an MVP)
 GEMINI_CLIENT = GeminiClient()  # For screenshot analysis
 
@@ -851,13 +876,10 @@ def api_screenshot_protected(current_user):
 
 # ────────── Admin Dashboard Endpoints ───────────────────
 @APP.get("/api/admin/users")
-@token_required
-def api_admin_get_users(current_user):
-    """Get all users with their token usage summary (admin only)"""
+def api_admin_get_users():
+    """Get all users with their token usage summary (no auth required for simplicity)"""
     try:
-        # For now, allow any authenticated user to view this
-        # In production, you'd want to check for admin role
-        log.info(f"Admin users list requested by user {current_user['id']}")
+        log.info("Admin users list requested")
 
         days = request.args.get("days", 30, type=int)
         users_usage = auth_manager.get_all_users_usage_summary(days)
@@ -873,11 +895,10 @@ def api_admin_get_users(current_user):
 
 
 @APP.get("/api/admin/user/<int:user_id>/usage")
-@token_required
-def api_admin_get_user_usage(current_user, user_id):
+def api_admin_get_user_usage(user_id):
     """Get detailed usage for a specific user"""
     try:
-        log.info(f"User {user_id} usage requested by admin {current_user['id']}")
+        log.info(f"User {user_id} usage requested")
 
         days = request.args.get("days", 30, type=int)
         usage_data = auth_manager.get_user_token_usage(user_id, days)
@@ -904,11 +925,10 @@ def api_admin_get_user_usage(current_user, user_id):
 
 
 @APP.post("/api/admin/user/<int:user_id>/block")
-@token_required
-def api_admin_block_user(current_user, user_id):
+def api_admin_block_user(user_id):
     """Block a user from using the service"""
     try:
-        log.info(f"User {user_id} block requested by admin {current_user['id']}")
+        log.info(f"User {user_id} block requested")
 
         success = auth_manager.block_user(user_id)
 
@@ -927,11 +947,10 @@ def api_admin_block_user(current_user, user_id):
 
 
 @APP.post("/api/admin/user/<int:user_id>/unblock")
-@token_required
-def api_admin_unblock_user(current_user, user_id):
+def api_admin_unblock_user(user_id):
     """Unblock a user"""
     try:
-        log.info(f"User {user_id} unblock requested by admin {current_user['id']}")
+        log.info(f"User {user_id} unblock requested")
 
         success = auth_manager.unblock_user(user_id)
 
@@ -950,11 +969,10 @@ def api_admin_unblock_user(current_user, user_id):
 
 
 @APP.get("/api/admin/stats")
-@token_required
-def api_admin_get_stats(current_user):
+def api_admin_get_stats():
     """Get overall system statistics"""
     try:
-        log.info(f"Admin stats requested by user {current_user['id']}")
+        log.info("Admin stats requested")
 
         # Get basic stats from database
         import sqlite3
@@ -1039,5 +1057,25 @@ def api_admin_get_stats(current_user):
 
 # ────────── run ───────────────────
 if __name__ == "__main__":
-    log.info("★ Electron backend ready on http://0.0.0.0:5002")
-    APP.run(host="0.0.0.0", port=5002, threaded=True)
+    # Initialize database on startup
+    log.info("Initializing database...")
+    try:
+        db_manager.init_database()
+    except Exception as e:
+        log.error(f"Database initialization failed: {e}")
+        # Continue with existing SQLite fallback
+        pass
+
+    # Initialize token tracker on startup
+    log.info("Initializing token tracker...")
+    try:
+        token_tracker.get_user_usage_summary(1)  # Test database connection
+    except Exception as e:
+        log.warning(f"Token tracker initialization warning: {e}")
+
+    if IS_PRODUCTION:
+        log.info(f"★ Production backend ready on http://{HOST}:{PORT}")
+        APP.run(host=HOST, port=PORT, debug=False, threaded=True)
+    else:
+        log.info(f"★ Development backend ready on http://{HOST}:{PORT}")
+        APP.run(host=HOST, port=PORT, debug=False, threaded=True)

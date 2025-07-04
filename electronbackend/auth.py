@@ -12,10 +12,16 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify, current_app
 
-# JWT Secret key - in production, this should be in environment variables
-JWT_SECRET = os.getenv(
-    "JWT_SECRET", "your-super-secret-jwt-key-change-this-in-production"
-)
+# JWT Secret key - MUST be set in production environment
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    if os.getenv("NODE_ENV") == "production":
+        raise RuntimeError("JWT_SECRET environment variable MUST be set in production!")
+    else:
+        # Generate a random secret for development only
+        import secrets
+        JWT_SECRET = secrets.token_hex(32)
+        print("⚠️  WARNING: Using randomly generated JWT secret for development. Set JWT_SECRET in production!")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
